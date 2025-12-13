@@ -6,6 +6,10 @@ then each new socket waits for and reports each line of input it receives.
 A serial server socket ensures everything happens on one main thread and ensures
 a clean shut down even if an uncaught exception is thrown.
 
+Note that "serialization" here means "make everything happen in order on one
+thread." It is not referring to object serialization, which means to encode or
+decode an object.
+
 When you call `SerialServerSocket.run()`, all of the following events will
 happen on the thread that called `run` in this order:
 - A factory method will be called to create and bind a `java.net.ServerSocket`.
