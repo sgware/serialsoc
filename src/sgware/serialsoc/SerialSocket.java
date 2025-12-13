@@ -192,7 +192,7 @@ public class SerialSocket implements Closeable {
 			output.flush();
 		}
 		catch(IOException exception) {
-			// Ignore exceptions that happens because the socket is closed
+			// Ignore exceptions that happen because the socket is closed
 			// or closes during the write.
 		}
 	}
