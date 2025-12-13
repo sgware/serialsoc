@@ -200,6 +200,10 @@ press enter, and then type a message to send to the chat room. If you type
 `halt` the server will shut down, and if you type `catch fire` an exception
 will cause the server to crash.
 
+Even when the server crashes because of an uncaught exception, it still closes
+all open connections and gracefully shuts down via `onClose` and `onStop`
+before finally throwing the exception.
+
 ## Ownership and License
 
 Serial Server Sockets was created in December 2025 by Stephen G. Ware, Ph.D.
