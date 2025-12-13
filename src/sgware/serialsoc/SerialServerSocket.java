@@ -389,7 +389,7 @@ public class SerialServerSocket implements CheckedRunnable, AutoCloseable {
 	
 	/**
 	 * This method should be called with each uncaught exception that is thrown
-	 * on the main thread. The first time it is called, it stored the exception
+	 * on the main thread. The first time it is called, it stores the exception
 	 * to be thrown at the end of {@link #run()}. Each time it is called, it
 	 * passes the exception to {@link #onException(Exception)}.
 	 * 
