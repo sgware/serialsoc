@@ -39,7 +39,7 @@ once.
 - If at any time an uncaught exception is thrown, the server's `onException`
 method will be called immediately, then the server will close and stop, and
 then, after all events have finished, the uncaught exception will be thrown from
-the server's main `run()` method. If more than one uncaught exception is thrown,
+the server's main `run` method. If more than one uncaught exception is thrown,
 `onException` will be called for all of them, but only the first uncaught
 exception will be thrown from `run`.
 
