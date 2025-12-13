@@ -1,4 +1,4 @@
-# Serial Server Socket (Java)
+# Serial Server Sockets (Java)
 
 A Serial Server Socket simplifies a common design pattern in socket-based
 networking applications where a server waits for and accepts new sockets, and
@@ -14,17 +14,17 @@ will happen.
 - The server's `onStart` method is called exactly once and before any other
 events.
 - Each time the server socket accepts a new connection, the server will call a
-factory method create a new `SerialSocket` instance.
+factory method that creates a new `SerialSocket` instance.
 - When a new socket connects, its `onConnect` method is called exactly once and
 before any other events for that socket.
 - Each time a socket reads a line of input, its `receive` method is called with
 that input as a string.
 - When a socket is closed, either because something on the server side called
-its `close()` method or because the client closed the connection, its `onClose`
+its `close` method or because the client closed the connection, its `onClose`
 method is called exactly once.
 - After a socket has disconnected, its `onDisconnect` method is called exactly
 once, and it will always be the last event for that socket.
-- When the server is closed, either because its `close()` method was called,
+- When the server is closed, either because its `close` method was called,
 because the thread was interrupted, because the server socket was disconnected,
 or because an uncaught exception was thrown, the server's `onClose` method is
 called exactly once. When a server closes, all of its currently connected
@@ -37,7 +37,7 @@ method will be called immediately, then the server will close and stop, and
 then, after all events have finished, the uncaught exception will be thrown from
 the server's main `run()` method. If more than one uncaught exception is thrown,
 `onException` will be called for all of them, but only the first uncaught
-exception will be thrown by `run()`.
+exception will be thrown from `run`.
 
 Because all of these events happen on the same thread, the server may be able to
 avoid synchronizing its data structures. Because events like `onClose` and
@@ -56,7 +56,7 @@ Serial Socket Server is pure Java with no dependencies.
 ```
 git clone https://github.com/sgware/serialsoc
 cd serialsoc
-javac -sourcepath src -d bin src/sgware/serialsoc/SerialServerSocket.java
+javac -sourcepath src -d bin src/sgware/serialsoc/*.java
 ```
 
 A stress test is included in the project, which starts a server and then starts
@@ -187,10 +187,10 @@ public class ChatUser extends SerialSocket {
 }
 ```
 
-Run `ChatServer` with , then connect to `localhost` on port 1234. Type your
-name, and type a message to send to the chat room. If you type `halt` the server
-will shut down, and if you type `catch fire` an exception will trigger the
-server to crash.
+Run `ChatServer`, then connect to `localhost` on port 1234. Type your name,
+press enter, and then type a message to send to the chat room. If you type
+`halt` the server will shut down, and if you type `catch fire` an exception
+will cause the server to crash.
 
 ## Ownership and License
 
