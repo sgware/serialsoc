@@ -1,0 +1,1 @@
+typeSearchIndex = [{"l":"All Classes and Interfaces","u":"allclasses-index.html"},{"p":"sgware.serialsoc","l":"CheckedRunnable"},{"p":"sgware.serialsoc","l":"SerialServerSocket"},{"p":"sgware.serialsoc","l":"SerialSocket"}];updateSearchResults();

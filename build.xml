@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE xml>
+<project name="Serial Server Socket" default="build">
+	<target name="build" depends="clean,javadoc,compile,jar"/>
+	<target name="clean">
+		<delete dir="doc"/>
+		<delete dir="bin"/>
+		<delete dir="jar"/>
+	</target>
+	<target name="javadoc">
+		<javadoc
+			doctitle="Serial Server Socket API"
+			classpath="."
+			sourcepath="src"
+			destdir="docs"
+			packagenames="
+				sgware.serialsoc
+			"
+			access="protected"
+			source="16"
+			use="true"
+			author="true"
+			version="true"
+		/>
+	</target>
+	<target name="compile">
+		<mkdir dir="bin"/>
+		<javac
+			classpath="."
+			srcdir="src"
+			destdir="bin"
+			includeantruntime="false"
+		/>
+	</target>
+	<target name="jar">
+		<mkdir dir="jar"/>
+		<jar destfile="jar/serialsoc.jar">
+			<fileset dir="src" includes="**/CheckedRunnable.java,**/SerialServerSocket*.java,**/SerialSocket*.java,**/package-info.java"/>
+			<fileset dir="bin" includes="**/CheckedRunnable.class,**/SerialServerSocket*.class,**/SerialSocket*.class,**/package-info.class"/>
+		</jar>
+	</target>
+</project>
