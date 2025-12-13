@@ -71,7 +71,7 @@ public class SerialSocket implements Closeable {
 			catch(Exception exception) {
 				// If the exception was caused by the socket closing, ignore it;
 				// otherwise, register the uncaught exception.
-				if(!(closed && exception instanceof SocketException))
+				if(!(exception instanceof SocketException))
 					server.execute(() -> server.fail(exception));
 			}
 			// Ensure onClose() is called and the socket is closed.

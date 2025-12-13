@@ -21,7 +21,7 @@ import java.util.Random;
 class StressTest {
 	
 	private static final int PORT = 1234;
-	private static final int CLIENTS = 1000;
+	private static final int CLIENTS = 10000;
 	private static final Random RANDOM = new Random(0);
 	private static Thread SERVER_THREAD = null;
 	

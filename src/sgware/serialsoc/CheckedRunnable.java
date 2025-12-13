@@ -8,6 +8,7 @@ import java.util.concurrent.Callable;
  * void.
  * 
  * @author Stephen G. Ware
+ * @version 1
  */
 @FunctionalInterface
 public interface CheckedRunnable extends Callable<Void> {
