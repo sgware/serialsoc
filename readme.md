@@ -51,7 +51,11 @@ gracefully.
 
 ## Download
 
-Download the [JAR file](jar/serialsoc.jar) here.
+Download the [JAR file here](jar/serialsoc.jar).
+
+## Documentation
+
+The [JavaDoc API is here](http://sgware.github.io/serialsoc).
 
 ## Compile and Test
 
