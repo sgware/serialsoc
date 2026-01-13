@@ -1,0 +1,111 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <!-- Project Meta-Data -->
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sgware</groupId>
+  <artifactId>serialsoc</artifactId>
+  <version>1.0.0</version>
+  <name>Serial Server Sockets</name>
+  <description>Serial Server Sockets simplify networking by accepting new sockets and processing their input all on one thread and ensuring key events happen in a certain order for clean setup and shutdown despite uncaught exceptions.</description>
+  <url>http://github.com/sgware/serialsoc</url>
+  <!-- Properties -->
+  <properties>
+    <!-- UTF-8 Encoding -->
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Compile with Java 17 -->
+    <maven.compiler.release>17</maven.compiler.release>
+  </properties>
+  <!-- Build -->
+  <build>
+    <!-- Resources -->
+    <resources>
+      <!-- Include Java source files in JAR file. -->
+      <resource>
+        <directory>src/main/java</directory>
+        <includes>
+          <include>**/*.java</include>
+        </includes>
+      </resource>
+    </resources>
+    <!-- Plugins -->
+    <plugins>
+      <!-- Delete the /docs and /jar folder during the clean phase. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-clean-plugin</artifactId>
+        <version>3.5.0</version>
+        <configuration>
+          <filesets>
+            <fileset>
+              <directory>${basedir}/docs</directory>
+              <directory>${basedir}/jar</directory>
+            </fileset>
+          </filesets>
+          <force>true</force>
+        </configuration>
+      </plugin>
+      <!-- Generate Javadoc. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.12.0</version>
+        <executions>
+          <execution>
+            <id>javadoc</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Copy Javadoc into /docs for GitHub Pages. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>2.6</version>
+        <executions>
+          <execution>
+            <id>copy-resources</id>
+            <phase>package</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${basedir}/docs</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>target/reports/apidocs</directory>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Copy the JAR files into the /jar folder. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.9.0</version>
+        <executions>
+          <execution>
+            <id>copy-installed</id>
+            <phase>install</phase>
+            <goals>
+              <goal>copy</goal>
+            </goals>
+            <configuration>
+              <artifactItems>
+                <artifactItem>
+                  <groupId>${project.groupId}</groupId>
+                  <artifactId>${project.artifactId}</artifactId>
+                  <version>${project.version}</version>
+                  <type>${project.packaging}</type>
+                </artifactItem>
+              </artifactItems>
+              <outputDirectory>${basedir}/jar</outputDirectory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

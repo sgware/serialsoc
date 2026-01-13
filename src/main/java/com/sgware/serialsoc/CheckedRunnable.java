@@ -1,4 +1,4 @@
-package sgware.serialsoc;
+package com.sgware.serialsoc;
 
 import java.util.concurrent.Callable;
 

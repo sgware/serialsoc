@@ -1,1 +1,1 @@
-typeSearchIndex = [{"l":"All Classes and Interfaces","u":"allclasses-index.html"},{"p":"sgware.serialsoc","l":"CheckedRunnable"},{"p":"sgware.serialsoc","l":"SerialServerSocket"},{"p":"sgware.serialsoc","l":"SerialSocket"}];updateSearchResults();
+typeSearchIndex = [{"l":"All Classes and Interfaces","u":"allclasses-index.html"},{"p":"com.sgware.serialsoc","l":"CheckedRunnable"},{"p":"com.sgware.serialsoc","l":"SerialServerSocket"},{"p":"com.sgware.serialsoc","l":"SerialSocket"}];updateSearchResults();

@@ -60,4 +60,4 @@
  * @author Stephen G. Ware
  * @version 1
  */
-package sgware.serialsoc;
+package com.sgware.serialsoc;

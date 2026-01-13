@@ -51,7 +51,7 @@ gracefully.
 
 ## Download
 
-Download the [JAR file here](jar/serialsoc.jar).
+Download the [JAR file here](jar).
 
 ## Documentation
 
@@ -59,25 +59,32 @@ The [JavaDoc API is here](http://sgware.github.io/serialsoc).
 
 ## Compile and Test
 
-Serial Socket Server is pure Java with no dependencies.
+Serial Socket Server is pure Java with no dependencies. To compile it on the
+command line with just the JDK:
 
 ```
 git clone https://github.com/sgware/serialsoc
 cd serialsoc
-javac -sourcepath src -d bin src/sgware/serialsoc/*.java
+javac -sourcepath src -d bin src/main/java/com/sgware/serialsoc/*.java
 ```
 
 A stress test is included in the project, which starts a server and then starts
 many clients who each connect, send a random number of random messages, and
 disconnect. Each method checks that it is called in the right order from the
-right thread.
+right thread. Assuming you compiled it into the `bin` folder:
 
 ```
-java -cp bin sgware.serialsoc.StressTest
+java -cp bin com.sgware.serialsoc.StressTest
 ```
 
-There is also an ANT build file included which will compile the source, create
-the JavaDoc, and package the relevant files into a JAR.
+If you have Maven installed, you can compile the source, generate the
+documentation, and package the JAR file like this:
+
+```
+git clone https://github.com/sgware/serialsoc
+cd serialsoc
+mvn clean install
+```
 
 ## Example
 
