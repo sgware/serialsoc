@@ -15,9 +15,10 @@
  * exception, it is thrown immediately and no other events will happen.</li>
  * <li>The server's {@link SerialServerSocket#onStart() onStart} method is
  * called exactly once and before any other events.</li>
- * <li>Each time the server socket accepts a new connection, the server will
- * call {@link SerialServerSocket#createSocket(java.net.Socket)} to make a new
- * instance of {@link SerialSocket}.</li>
+ * <li>Each time the server socket {@link
+ * SerialServerSocket#accept(java.net.ServerSocket) accepts} a new connection,
+ * the server will call {@link SerialServerSocket#createSocket(java.net.Socket)}
+ * to make a new instance of {@link SerialSocket}.</li>
  * <li>When a new socket connects, its {@link SerialSocket#onConnect()
  * onConnect} method is called exactly once and before any other events for that
  * socket.</li>

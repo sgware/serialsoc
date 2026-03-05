@@ -222,4 +222,7 @@ This software is released under the open source MIT License.
 
 ## Version History
 
-- Version 1: First public release.
+- Version 1.1.0: Added a the 'accept(ServerSocket)' method to SerialServerSocket
+so that servers using SSL can check for handshake success before returning a new
+socket.
+- Version 1.0.0: First public release.
