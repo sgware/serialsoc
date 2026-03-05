@@ -63,7 +63,7 @@ public class SerialServerSocket implements CheckedRunnable, AutoCloseable {
 			try {
 				// Accept new sockets until closed.
 				while(!closed) {
-					Socket socket = server.accept();
+					Socket socket = accept(server);
 					execute(() -> {
 						if(closed)
 							socket.close();
@@ -203,6 +203,29 @@ public class SerialServerSocket implements CheckedRunnable, AutoCloseable {
 	 */
 	protected ServerSocket createServer() throws Exception {
 		return new ServerSocket(0);
+	}
+	
+	/**
+	 * Accept a new {@link Socket socket} from a {@link ServerSocket server
+	 * socket}, blocking until one becomes available.
+	 * <p>
+	 * By default, this method is equivalent to:
+	 * <p>
+	 * <code>return server.accept();</code>
+	 * <p>
+	 * Overriding this method allows the server to customize how it accepts
+	 * sockets or to perform additional checks on a socket before it is used.
+	 * For example, if this server is using {@link javax.net.ssl.SSLServerSocket
+	 * secure sockets}, this method can check that the handshake was successful
+	 * before returning the socket.
+	 * 
+	 * @param server the server socket returned by {@link #createServer()} which
+	 * should be used to accept a new socket
+	 * @return the accepted socket
+	 * @throws Exception if an exception occurs while accepting a socket
+	 */
+	protected Socket accept(ServerSocket server) throws Exception {
+		return server.accept();
 	}
 	
 	/**
