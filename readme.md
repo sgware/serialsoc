@@ -190,6 +190,14 @@ public class ChatUser extends SerialSocket {
 	}
 	
 	@Override
+	protected void onException(Exception exception) throws Exception {
+		System.out.println("An exception has caused user " + name + " to crash.");
+		exception.printStackTrace();
+		// This exception causes the server to crash.
+		super.onException(exception);
+	}
+	
+	@Override
 	protected void onClose() throws Exception {
 		send("You are being disconnected.");
 	}
@@ -222,7 +230,9 @@ This software is released under the open source MIT License.
 
 ## Version History
 
-- Version 1.1.0: Added a the 'accept(ServerSocket)' method to SerialServerSocket
-so that servers using SSL can check for handshake success before returning a new
-socket.
+- Version 1.2.0: Added an `onException` method to `SerialSocket` that can be
+  used to log and possibly ignore exceptions caused by individual sockets.
+- Version 1.1.0: Added a the `accept(ServerSocket)` method to
+  `SerialServerSocket` so that servers using SSL can check for handshake success
+  before returning a new socket.
 - Version 1.0.0: First public release.

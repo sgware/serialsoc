@@ -33,6 +33,14 @@ class ChatUser extends SerialSocket {
 	}
 	
 	@Override
+	protected void onException(Exception exception) throws Exception {
+		System.out.println("An exception has caused user " + name + " to crash.");
+		exception.printStackTrace();
+		// This exception causes the server to crash.
+		super.onException(exception);
+	}
+	
+	@Override
 	protected void onClose() throws Exception {
 		send("You are being disconnected.");
 	}
