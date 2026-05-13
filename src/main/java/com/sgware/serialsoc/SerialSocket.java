@@ -37,6 +37,10 @@ import java.util.Objects;
  * <li>After the socket is closed, {@link #onDisconnect() onDisconnect} is
  * called exactly once, and it will always be the last event for this socket.
  * This event provides an opportunity to perform any required cleanup.</li>
+ * <li>If at any time an uncaught exception is thrown while this socket is
+ * {@link #send(String) sending} or {@link #receive(String) receiving} messages,
+ * {@link #onException(Exception) onException} is called and the socket will
+ * close.</li>
  * </ul>
  * 
  * @author Stephen G. Ware
@@ -72,7 +76,7 @@ public class SerialSocket implements Closeable {
 				// If the exception was caused by the socket closing, ignore it;
 				// otherwise, register the uncaught exception.
 				if(!(exception instanceof SocketException))
-					server.execute(() -> server.fail(exception));
+					server.execute(() -> fail(exception));
 			}
 			// Ensure onClose() is called and the socket is closed.
 			close();
@@ -178,13 +182,14 @@ public class SerialSocket implements Closeable {
 	 * does not end in a new line character, one will be appended. The output
 	 * stream will then be flushed.
 	 * <p>
-	 * This method ignores the {@link IOException} thrown if the socket is closed
-	 * or closes during the write operation.
+	 * If an {@link IOException} other than a {@link SocketException} is thrown
+	 * while sending the message, this socket will close and the exception will
+	 * be passed to {@link #onException(Exception)}, which will run on the main
+	 * thread regardless of what thread this method ran from.
 	 * 
 	 * @param message the message to send via the socket's output stream
-	 * @throws Exception if an exception is thrown by the method
 	 */
-	protected void send(String message) throws Exception {
+	protected void send(String message) {
 		try {
 			output.append(message);
 			if(!message.endsWith("\n") && !message.endsWith("\r"))
@@ -194,6 +199,8 @@ public class SerialSocket implements Closeable {
 		catch(IOException exception) {
 			// Ignore exceptions that happen because the socket is closed
 			// or closes during the write.
+			if(!(exception instanceof SocketException))
+				server.execute(() -> fail(exception));
 		}
 	}
 	
@@ -208,6 +215,33 @@ public class SerialSocket implements Closeable {
 	 */
 	protected void receive(String message) throws Exception {
 		// This method is meant to be overridden.
+	}
+	
+	/**
+	 * This method runs on the main thread if this socket throw an uncaught
+	 * exception while {@link #send(String) sending} or {@link #receive(String)
+	 * receiving} messages. This method provides an opportunity to log the
+	 * exception. After an uncaught exception is thrown, this socket is {@link
+	 * #close() closed}.
+	 * <p>
+	 * By default, this method simply re-throws the same exception on the main
+	 * thread, which will cause the server to close and the exception to be
+	 * passed to the server's {@link #onException(Exception)} method. This
+	 * method can be overridden to ignore all or some exceptions to cause only
+	 * this socket to closed rather than the server.
+	 * <p>
+	 * It is strongly recommended that this method not throw an exception. If it
+	 * does, that exception will be caught and {@link Exception#printStackTrace()
+	 * printed to standard error}, but it will not be reported to this method to
+	 * avoid creating an infinite loop.
+	 * 
+	 * @param exception the uncaught exception
+	 * @throws Exception if an exception is thrown by the method
+	 */
+	protected void onException(Exception exception) throws Exception {
+		server.execute(() -> {
+			throw exception;
+		});
 	}
 	
 	/**
@@ -241,5 +275,24 @@ public class SerialSocket implements Closeable {
 	 */
 	protected void onDisconnect() throws Exception {
 		// This method is meant to be overridden.
+	}
+	
+	/**
+	 * This method should be called when an uncaught exception is thrown while
+	 * this socket with {@link #send(String) sending} or {@link #receive(String)
+	 * receiving}.} It passes the exception to {@link #onException(Exception)}.
+	 * 
+	 * @param exception the uncaught exception
+	 */
+	private final void fail(Exception exception) {
+		try {
+			onException(exception);
+		}
+		catch(Exception other) {
+			// If onException throws an exception, we don't want to call it
+			// again and risk creating an infinite loop, so just print the
+			// exception to standard error.
+			other.printStackTrace();
+		}
 	}
 }
