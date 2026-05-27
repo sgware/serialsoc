@@ -7,6 +7,26 @@
   <name>Serial Server Sockets</name>
   <description>Serial Server Sockets simplify networking by accepting new sockets and processing their input all on one thread and ensuring key events happen in a certain order for clean setup and shutdown despite uncaught exceptions.</description>
   <url>http://github.com/sgware/serialsoc</url>
+  <!-- License -->
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/license/mit</url>
+    </license>
+  </licenses>
+  <!-- Developers -->
+  <developers>
+    <developer>
+      <name>Stephen G. Ware</name>
+      <email>sgware@gmail.com</email>
+    </developer>
+  </developers>
+  <!-- Source Control -->
+  <scm>
+    <connection>scm:git:git://github.com/sgware/serialsoc.git</connection>
+    <developerConnection>scm:git:ssh://github.com:sgware/serialsoc.git</developerConnection>
+    <url>http://github.com/sgware/serialsoc/tree/main</url>
+  </scm>
   <!-- Properties -->
   <properties>
     <!-- UTF-8 Encoding -->
@@ -16,16 +36,6 @@
   </properties>
   <!-- Build -->
   <build>
-    <!-- Resources -->
-    <resources>
-      <!-- Include Java source files in JAR file. -->
-      <resource>
-        <directory>src/main/java</directory>
-        <includes>
-          <include>**/*.java</include>
-        </includes>
-      </resource>
-    </resources>
     <!-- Plugins -->
     <plugins>
       <!-- Delete the docs and build folder during the clean phase. -->
@@ -80,7 +90,41 @@
           </execution>
         </executions>
       </plugin>
-      <!-- Copy the JAR files into the build/jar folder. -->
+      <!-- Create a JAR file for all source files. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>3.4.0</version>
+        <executions>
+          <execution>
+            <id>attach-source</id>
+            <goals>
+              <goal>jar-no-fork</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Create a JAR file the includes both the compiled code and source. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-assembly-plugin</artifactId>
+        <version>3.8.0</version>
+        <configuration>
+          <descriptors>
+            <descriptor>src/assembly/jar-all.xml</descriptor>
+          </descriptors>
+        </configuration>
+        <executions>
+          <execution>
+            <id>jar-all</id>
+            <phase>package</phase>
+            <goals>
+              <goal>single</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Copy the JAR file with source into the build/jar folder. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-dependency-plugin</artifactId>
@@ -98,11 +142,29 @@
                   <groupId>${project.groupId}</groupId>
                   <artifactId>${project.artifactId}</artifactId>
                   <version>${project.version}</version>
+                  <classifier>all</classifier>
                   <type>${project.packaging}</type>
                 </artifactItem>
               </artifactItems>
               <outputDirectory>${basedir}/build/jar</outputDirectory>
+              <stripVersion>true</stripVersion>
+              <stripClassifier>true</stripClassifier>
             </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Generate file checksums -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-gpg-plugin</artifactId>
+        <version>3.2.8</version>
+        <executions>
+          <execution>
+            <id>sign-artifacts</id>
+            <phase>deploy</phase>
+            <goals>
+              <goal>sign</goal>
+            </goals>
           </execution>
         </executions>
       </plugin>
