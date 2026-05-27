@@ -51,7 +51,7 @@ gracefully.
 
 ## Download
 
-Download the [JAR file here](jar).
+Download the [pre-built JAR file here](build/jar).
 
 ## Documentation
 

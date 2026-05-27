@@ -28,7 +28,7 @@
     </resources>
     <!-- Plugins -->
     <plugins>
-      <!-- Delete the /docs and /jar folder during the clean phase. -->
+      <!-- Delete the docs and build folder during the clean phase. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-clean-plugin</artifactId>
@@ -37,7 +37,7 @@
           <filesets>
             <fileset>
               <directory>${basedir}/docs</directory>
-              <directory>${basedir}/jar</directory>
+              <directory>${basedir}/build</directory>
             </fileset>
           </filesets>
           <force>true</force>
@@ -80,7 +80,7 @@
           </execution>
         </executions>
       </plugin>
-      <!-- Copy the JAR files into the /jar folder. -->
+      <!-- Copy the JAR files into the build/jar folder. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-dependency-plugin</artifactId>
@@ -101,10 +101,20 @@
                   <type>${project.packaging}</type>
                 </artifactItem>
               </artifactItems>
-              <outputDirectory>${basedir}/jar</outputDirectory>
+              <outputDirectory>${basedir}/build/jar</outputDirectory>
             </configuration>
           </execution>
         </executions>
+      </plugin>
+      <!-- Publish to the Maven Central Repository -->
+      <plugin>
+        <groupId>org.sonatype.central</groupId>
+        <artifactId>central-publishing-maven-plugin</artifactId>
+        <version>0.10.0</version>
+        <extensions>true</extensions>
+        <configuration>
+          <publishingServerId>central</publishingServerId>
+        </configuration>
       </plugin>
     </plugins>
   </build>
