@@ -230,6 +230,8 @@ This software is released under the open source MIT License.
 
 ## Version History
 
+- Version 1.3.0: Added a shutdown hook when the server starts so that if the JVM
+  is shut down (e.g. via SIGTERM) the server will close and stop gracefully.
 - Version 1.2.0: Added an `onException` method to `SerialSocket` that can be
   used to log and possibly ignore exceptions caused by individual sockets.
 - Version 1.1.0: Added a the `accept(ServerSocket)` method to
