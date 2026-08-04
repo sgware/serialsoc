@@ -10,6 +10,7 @@ import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
@@ -94,6 +95,11 @@ public class SerialServerSocket implements CheckedRunnable, AutoCloseable {
 	final List<SerialSocket> sockets = new ArrayList<>();
 	
 	/**
+	 * A latch used to signal that the server has finished shutting down.
+	 */
+	private final CountDownLatch latch = new CountDownLatch(1);
+	
+	/**
 	 * The server socket from which new connections will be accepted.
 	 */
 	private ServerSocket server = null;
@@ -122,6 +128,17 @@ public class SerialServerSocket implements CheckedRunnable, AutoCloseable {
 		// Create and bind the server socket.
 		// Throw an exception immediately if it happens.
 		server = createServer();
+		// Add a shutdown hook. If the JVM stops, close this server and wait for
+		// it to finish.
+		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+			close();
+			try {
+				latch.await();
+			}
+			catch(InterruptedException exception) {
+				// do nothing
+			}
+		}));
 		// Start a thread to listen for new connections.
 		Accepter accepter = new Accepter();
 		accepter.start();
@@ -152,6 +169,8 @@ public class SerialServerSocket implements CheckedRunnable, AutoCloseable {
 		// Ensure onStop() is called.
 		execute(() -> onStop());
 		drain();
+		// Notify anyone waiting that the server has finished shutting down.
+		latch.countDown();
 		// If an uncaught exception occurred at any time, throw it now.
 		if(uncaught != null)
 			throw uncaught;
