@@ -21,7 +21,7 @@ When you call `SerialServerSocket.run()`:
 - Each time a new socket is accepted, the server calls `create(Socket)` on the
   same thread that called `run()` to wrap a `SerialSocket` around the new socket.
   If `create(Socket)` throws an exception, the socket is closed and never
-  reported to the server. If `#create(Socket)` does not throw an exception, the
+  reported to the server. If `create(Socket)` does not throw an exception, the
   new socket is reported to the server's `onAccept(SerialSocket)` method, which
   runs on the same thread that called `run()`.
 - Each time a new `SerialSocket` is successfully created, its `onConnect()`
@@ -186,7 +186,7 @@ import java.io.IOException;
 import java.net.Socket;
 import com.sgware.serialsoc.*;
 
-class ChatUser extends SimpleSerialSocket {
+public class ChatUser extends SimpleSerialSocket {
 	
 	private final ChatServer server;
 	private String name = null;
