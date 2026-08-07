@@ -1,0 +1,23 @@
+--no-fonts
+-encoding
+'UTF-8'
+-protected
+--release
+17
+-sourcepath
+'C:/Users/Stephen/Documents/Eclipse Workspaces/Serial Server Sockets/serialsoc/src/main/java;C:/Users/Stephen/Documents/Eclipse Workspaces/Serial Server Sockets/serialsoc/target/generated-sources/annotations'
+-author
+-bottom
+'Copyright &#169; 2026. All rights reserved.'
+-charset
+'UTF-8'
+-d
+'C:/Users/Stephen/Documents/Eclipse Workspaces/Serial Server Sockets/serialsoc/target/reports/apidocs'
+-docencoding
+'UTF-8'
+-doctitle
+'Serial Server Sockets 2.0.0 API'
+-use
+-version
+-windowtitle
+'Serial Server Sockets 2.0.0 API'

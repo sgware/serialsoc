@@ -2,268 +2,190 @@ package com.sgware.serialsoc;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.net.ServerSocket;
+import java.io.StringWriter;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.List;
+import java.net.SocketException;
 import java.util.Random;
 
-/**
- * Create a serial server socket, then have many clients connect to it, send a
- * random number of random messages, and disconnect. All methods check that they
- * are called in the right order from the right thread.
- * 
- * @author Stephen G. Ware
- */
 class StressTest {
 	
-	private static final int PORT = 1234;
-	private static final int CLIENTS = 10000;
-	private static final Random RANDOM = new Random(0);
-	private static Thread SERVER_THREAD = null;
-	
-	public static void main(String[] args) throws Exception {
-		// Create clients.
-		TestClient[] clients = new TestClient[CLIENTS];
-		for(int i = 0; i < clients.length; i++)
-			clients[i] = new TestClient();
-		// Start server.
-		TestServer server = new TestServer();
-		SERVER_THREAD = new Thread(() -> {
-			try {
-				server.run();
-			}
-			catch(Exception exception) {
-				exception.printStackTrace();
-			}
-		});
-		SERVER_THREAD.start();
-		// Start each client after a random delay.
-		for(TestClient client : clients) {
-			pause();
-			client.start();
-		}
-		// Close the server and wait for it to finish.
-		server.close();
-		SERVER_THREAD.join();
-	}
-	
-	private static class TestServer extends SerialServerSocket {
-		
-		public final List<TestSocket> sockets = new ArrayList<>();
-		public boolean started = false;
-		public boolean closed = false;
-		public boolean stopped = false;
-		
-		@Override
-		public String toString() {
-			return "[Test Server: sockets=" + sockets.size() + "; started=" + started + "; closed=" + closed + "; stopped=" + stopped + "]";
-		}
-		
-		@Override
-		protected ServerSocket createServer() throws IOException {
-			checkThread();
-			return new ServerSocket(PORT);
-		}
-		
-		@Override
-		protected TestSocket createSocket(Socket socket) throws Exception {
-			checkThread();
-			return new TestSocket(this, socket);
-		}
-		
-		@Override
-		protected void onStart() {
-			checkThread();
-			if(started || closed || stopped)
-				throw new RuntimeException("Server started out of order: " + this);
-			started = true;
-			System.out.println("Server started.");
-		}
-		
-		@Override
-		protected void onException(Exception exception) {
-			checkThread();
-			exception.printStackTrace();
-			System.exit(1);
-		}
-		
-		@Override
-		protected void onClose() {
-			checkThread();
-			if(!started || closed || stopped)
-				throw new RuntimeException("Server closed out of order: " + this);
-			closed = true;
-			System.out.println("Server closed.");
-		}
-		
-		@Override
-		protected void onStop() {
-			checkThread();
-			if(!started || !closed || stopped)
-				throw new RuntimeException("Server stopped out of order: " + this);
-			stopped = true;
-			System.out.println("Server stopped.");
-		}
-		
-		public void broadcast(String message) throws Exception {
-			checkThread();
-			for(TestSocket socket : sockets)
-				socket.send(message);
-		}
-	}
-	
-	private static class TestSocket extends SerialSocket {
-		
-		private static int nextID = 0;
-		
-		public final TestServer server;
-		public final int id = nextID++;
-		public boolean connected = false;
-		public boolean closed = false;
-		public boolean disconnected = false;
-		
-		protected TestSocket(TestServer server, Socket socket) throws Exception {
-			super(server, socket);
-			this.server = server;
-			checkThread();
-		}
-		
-		@Override
-		public String toString() {
-			return "[Test Socket: id=" + id + "; connected=" + connected + "; closed=" + closed + "; disconnected=" + disconnected + "]";
-		}
-		
-		@Override
-		protected void onConnect() throws Exception {
-			checkThread();
-			if(connected || closed || disconnected)
-				throw new RuntimeException("Socket connected out of order: " + this);
-			if(!server.started || server.closed || server.stopped)
-				throw new RuntimeException("Socket connected out of order: " + server);
-			connected = true;
-			server.broadcast(id + " has connected.");
-			server.sockets.add(this);
-			send("You have connected with ID number " + id + ".");
-			System.out.println("Socket " + id + " has connected.");
-		}
-		
-		@Override
-		protected void receive(String message) throws Exception {
-			checkThread();
-			if(!connected || disconnected)
-				throw new RuntimeException("Socket received out of order: " + this);
-			if(!server.started || server.stopped)
-				throw new RuntimeException("Socket received out of order: " + server);
-			server.broadcast(id + ": " + message);
-		}
-		
-		@Override
-		protected void onClose() throws Exception {
-			checkThread();
-			if(!connected || closed || disconnected)
-				throw new RuntimeException("Socket closed out of order: " + this);
-			if(!server.started || server.stopped)
-				throw new RuntimeException("Socket closed out of order: " + server);
-			closed = true;
-			send("Your connection has been closed.");
-			System.out.println("Client " + id + " has been closed.");
-		}
-		
-		@Override
-		protected void onDisconnect() throws Exception {
-			checkThread();
-			if(!connected || !closed || disconnected)
-				throw new RuntimeException("Socket disconnected out of order: " + this);
-			if(!server.started || server.stopped)
-				throw new RuntimeException("Socket disconnected out of order: " + server);
-			disconnected = true;
-			server.sockets.remove(this);
-			server.broadcast(id + " has disconnected.");
-			System.out.println("Client " + id + " has disconnected.");
-		}
-	}
+	public static final int PORT = 1234;
+	public static final int CLIENTS = 100000;
+	public static final int MIN_MESSAGES = 0;
+	public static final int MAX_MESSAGES = 20;
+	public static final int MIN_MESSAGE_LENGTH = 5;
+	public static final int MAX_MESSAGE_LENGTH = 40;
+	public static final int MIN_DELAY = 0;
+	public static final int MAX_DELAY = 100;
+	public static final Random RANDOM = new Random(0);
+	public static final String POOL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 	
 	private static class TestClient extends Thread {
 		
-		public Socket socket = null;
+		private static int nextID = 0;
+		public final int id = nextID++;
 		private final String[] messages;
+		private final long[] delays;
+		private boolean connected = false;
+		private boolean disconnected = false;
 		
-		public TestClient() throws IOException {
-			this.messages = new String[RANDOM.nextInt(100)];
-			for(int i = 0; i < messages.length; i++)
-				this.messages[i] = message();
+		public TestClient() {
+			messages = new String[random(MIN_MESSAGES, MAX_MESSAGES)];
+			for(int i = 0; i < messages.length; i++) {
+				int length = random(MIN_MESSAGE_LENGTH, MAX_MESSAGE_LENGTH);
+				StringWriter string = new StringWriter();
+				for(int j = 0; j < length; j++)
+					string.append(POOL.charAt(RANDOM.nextInt(POOL.length())));
+				messages[i] = string.toString();
+			}
+			delays = new long[messages.length + 1];
+			for(int i = 0; i < delays.length; i++)
+				delays[i] = random(MIN_DELAY, MAX_DELAY);
+		}
+		
+		@Override
+		public String toString() {
+			return "Client " + id;
+		}
+		
+		public boolean launch() {
+			start();
+			while(!connected && !disconnected)
+				pause(10);
+			return connected;
 		}
 		
 		@Override
 		public void run() {
-			try {
-				socket = new Socket("localhost", PORT);
-				Thread listener = new TestClientListener(this);
+			System.out.println(this + " started.");
+			TestClientListener listener = null;
+			int index = 0;
+			try(
+				Socket socket = new Socket("localhost", PORT);
+				BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+				BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+			) {
+				connected = true;
+				pause(delays[0]);
+				listener = new TestClientListener(this, in);
 				listener.start();
-				BufferedWriter output = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-				for(String message : messages) {
-					pause();
-					output.append(message);
-					output.append("\n");
-					output.flush();
+				while(index < messages.length) {
+					out.append(messages[index]);
+					out.append("\n");
+					out.flush();
+					System.out.println(this + " sent: " + messages[index]);
+					pause(delays[index]);
+					index++;
 				}
-				socket.close();
-				listener.join();
+			}
+			catch(SocketException exception) {
+				System.out.println(this + " crashed with " + (messages.length - index) + " of " + messages.length + " message unsent.");
 			}
 			catch(Exception exception) {
-				// Ignore client exceptions.
+				throw new RuntimeException(this + " crashed.", exception);
 			}
+			finally {
+				disconnected = true;
+			}
+			try {
+				if(listener != null)
+					listener.join();
+			}
+			catch(InterruptedException exception) {
+				throw new RuntimeException(this + " crashed.", exception);
+			}
+			System.out.println(this + " stopped.");
 		}
 	}
 	
 	private static class TestClientListener extends Thread {
 		
-		public final TestClient client;
+		private final TestClient client;
+		private final BufferedReader in;
 		
-		public TestClientListener(TestClient client) {
+		private TestClientListener(TestClient client, BufferedReader in) {
 			this.client = client;
+			this.in = in;
+		}
+		
+		@Override
+		public String toString() {
+			return client + " Listener";
 		}
 		
 		@Override
 		public void run() {
 			try {
-				BufferedReader input = new BufferedReader(new InputStreamReader(client.socket.getInputStream()));
-				String line = input.readLine();
-				while(line != null)
-					line = input.readLine();
+				while(true) {
+					String message = in.readLine();
+					if(message == null)
+						return;
+					else
+						System.out.println(client + " received: " + message);
+				}
 			}
-			catch(IOException exception) {
-				// Ignore client exceptions.
+			catch(Exception exception) {
+				System.out.println(this + " crashed.");
 			}
 		}
 	}
 	
-	private static final void checkThread() {
-		if(Thread.currentThread() != SERVER_THREAD)
-			throw new RuntimeException("Method is not running on the server thread.");
+	private static final int random(int min, int max) {
+		return min + RANDOM.nextInt(max - min + 1);
 	}
 	
-	private static final void pause() {
-		long milliseconds = RANDOM.nextLong(1000);
-		if(milliseconds < 10)
-			return;
+	private static final void pause(long ms) {
 		try {
-			Thread.sleep(RANDOM.nextLong(milliseconds));
+			Thread.sleep(ms);
 		}
 		catch(InterruptedException exception) {
-			// Ignore
+			throw new RuntimeException("Pause interrupted.", exception);
 		}
 	}
 	
-	private static final String message() {
-		int length = 1 + RANDOM.nextInt(100);
-		String string = "";
-		for(int i = 0; i < length; i++)
-			string += Character.toString(65 + RANDOM.nextInt(26));
-		return string;
+	public static void main(String[] args) throws Exception {
+		TestSerialServerSocket server = new TestSerialServerSocket(PORT);
+		TestClient[] clients = new TestClient[CLIENTS];
+		for(int i = 0; i <  clients.length; i++)
+			clients[i] = new TestClient();
+		long[] delays = new long[clients.length];
+		for(int i = 0; i <  clients.length; i++)
+			delays[i] = random(MIN_DELAY, MAX_DELAY);
+		Thread clientThread = new Thread(() -> {
+			pause(500);
+			System.out.println("Begin starting clients.");
+			int index = 0;
+			for(index = 0; index < clients.length; index++) {
+				if(clients[index].launch())
+					pause(delays[index]);
+				else
+					break;
+			}
+			System.out.println("Started " + index + " of " + clients.length + " clients.");
+			pause(500);
+			server.close();
+			try {
+				for(TestClient client : clients)
+					client.join();
+			}
+			catch(InterruptedException exception) {
+				throw new RuntimeException("Client thread interrupted.", exception);
+			}
+		});
+		clientThread.start();
+		Exception uncaught = null;
+		try {
+			server.run();
+		}
+		catch(Exception exception) {
+			uncaught = exception;
+		}
+		clientThread.join();
+		if(uncaught == null)
+			server.verify();
+		else
+			uncaught.printStackTrace();
 	}
 }

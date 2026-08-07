@@ -1,10 +1,5 @@
 package com.sgware.serialsoc;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.ArrayList;
@@ -14,95 +9,133 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
- * A wrapper around {@link ServerSocket} that accepts new {@link SerialSocket}s
- * and ensures all events happen on the same thread.
+ * A serial server socket listens for incoming socket connections and ensures
+ * all inputs from them are processed one at a time on a single thread. It also
+ * guarantees that certain methods run in order, including setup and shutdown
+ * methods for the server and each socket, even if an exception is thrown.
  * <p>
- * When {@link #run()} is called, all of the following events will happen on the
- * thread which called that {@link #run()}:
+ * When {@link #run()} is called, all of the following events will happen:
  * <ul>
- * <li>{@link #createServer()} will be called to bind a {@link
- * java.net.ServerSocket ServerSocket}. If that method throws an exception, it
- * is thrown immediately and no other events will happen.</li>
- * <li>{@link #onStart() onStart} is called exactly once and before any other
- * events.</li>
- * <li>Each time the server socket accepts a new connection, {@link
- * #createSocket(java.net.Socket)} will be called to make a new instance of
- * {@link SerialSocket}.</li>
- * <li>When the server is closed, either because {@link #close()} was called,
- * because the thread was interrupted, because the server socket was
- * disconnected, or because an uncaught exception was thrown, {@link #onClose()
- * onClose} is called exactly once. Then all open sockets will also be
- * {@link SerialSocket#close() closed}.</li>
- * <li>After all other events, {@link #onStop() onStop} is called exactly once.
+ * <li>{@link #onStart()} is called first on the same thread that called {@link
+ * #run()}. If it throws an exception, no other methods will run.</li>
+ * <li>{@link #connect()} is called on the same thread that called {@link
+ * #run()} to establish a server socket. If it does not throw an exception,
+ * {@link #onConnect()} is called on the same thread that called {@link #run()}.
  * </li>
- * <li>If at any time an uncaught exception is thrown, {@link
- * #onException(Exception) onException} is called immediately, then the server
- * will close and stop, and then, after all events have finished, the uncaught
- * exception will be thrown by {@link #run()}. If more than one uncaught
- * exception is thrown, {@link #onException(Exception) onException} will be
- * called for all of them, but only the first uncaught exception will be thrown
- * by {@link #run()}.</li>
+ * <li>If {@link #connect()} did not throw an exception, the server starts a new
+ * thread that continuously calls {@link #accept()} to wait for new connections.
+ * Each time a new socket is accepted, the server calls {@link #create(Socket)}
+ * on the same thread that called {@link #run()} to wrap a {@link SerialSocket}
+ * around the new socket. If {@link #create(Socket)} throws an exception, the
+ * socket is closed and never reported to the server. If {@link #create(Socket)}
+ * does not throw an exception, the new socket is reported to the server's
+ * {@link #onAccept(SerialSocket)} method, which runs on the same thread that
+ * called {@link #run()}.</li>
+ * <li>Each time a new {@link SerialSocket} is successfully created, its {@link
+ * SerialSocket#onConnect()} method is called first on the same thread that
+ * called {@link #run()}.</li>
+ * <li>If {@link SerialSocket#onConnect()} did not throw an exception, a new
+ * thread continuously calls {@link SerialSocket#read()} to listen for new
+ * input. Each input that is successfully received is reported to {@link
+ * SerialSocket#receive(String)}, which runs on the same thread that called
+ * {@link #run()}.</li>
+ * <li>A socket can be closed by the client, by a network problem, because one
+ * of its methods threw an exception, or by calling {@link SerialSocket#close()}
+ * from any thread. Regardless of how it is closed, {@link
+ * SerialSocket#onClose()}, then {@link SerialSocket#disconnect()}, then {@link
+ * SerialSocket#onDisconnect()} are always called in that order from the same
+ * thread that called {@link #run()}. These methods always run even if an
+ * earlier method threw an exception.</li>
+ * <li>If any {@link SerialSocket} methods throw an exception, the exception is
+ * reported to {@link SerialSocket#onException(Exception)} on the same thread
+ * that called {@link #run()}, and then the socket will close gracefully. {@link
+ * SerialSocket#onException(Exception)} can either ignore the exception or
+ * re-throw it to cause the server to shut down.</li>
+ * <li>If any {@link SerialServerSocket} methods throw an exception (or if
+ * {@link SerialSocket#onException(Exception)} re-throws an exception), the
+ * exception is reported to {@link #onException(Exception)} on the same thread
+ * that called {@link #run()}, and then the server will shut down gracefully.
+ * </li>
+ * <li>A server shuts down when one of its methods throws an exception, when
+ * a network problem causes the server to disconnect, when the JVM shuts down,
+ * or when {@link #close()} is called from any thread. Regardless of how it is
+ * closed, if {@link #connect()} did not throw an exception, {@link #onClose()},
+ * then {@link #disconnect()}, then {@link #onDisconnect()} are always called in
+ * that order from the same thread that called {@link #run()}.</li>
+ * <li>As long as {@link #onStart()} did not throw an exception, {@link
+ * #onStop()} is always called last from the same thread that called {@link
+ * #run()}.</li>
+ * <li>If an exception was thrown by any of the server's methods, it is thrown
+ * by {@link #run()} after all of the shut down methods have completed.</li> 
  * </ul>
- * <p>
- * If an operation needs to run on the same thread as these events but not in
- * response to an event (such as a regular tick or status check) any thread can
- * use {@link #execute(CheckedRunnable)} to submit an operation to be run on the
- * main thread.
  * 
  * @author Stephen G. Ware
- * @version 1
  */
-public class SerialServerSocket implements CheckedRunnable, AutoCloseable {
+public abstract class SerialServerSocket implements CheckedRunnable, AutoCloseable {
 	
 	/**
-	 * A thread that accepts new sockets until the server is closed.
+	 * A thread that repeatedly {@link #accept() accepts} and {@link #create()
+	 * creates} new sockets then {@link #onAccept(SerialSocket) reports them to
+	 * the server}.
 	 */
 	private final class Accepter extends Thread {
 		
 		@Override
 		public final void run() {
 			try {
-				// Accept new sockets until closed.
+				// Loop until server is closed.
 				while(!closed) {
-					Socket socket = accept(server);
+					// Runs on this thread because it blocks.
+					Socket socket = accept();
+					CountDownLatch next = new CountDownLatch(1);
+					// Set up the socket on the main thread.
 					execute(() -> {
-						if(closed)
-							socket.close();
-						else
-							createSocket(socket).listener.start();
+						SerialSocket serial = safe(() -> create(socket));
+						if(serial == null) {
+							try {
+								socket.close();
+							}
+							catch(Exception exception) {
+								// Ignore exceptions from closing the socket,
+								// since it was never reported to the server.
+							}
+						}
+						else {
+							safely(() -> onAccept(serial));
+							serial.listener.start();
+						}
+						next.countDown();
 					});
+					// Wait for the current socket to finish processing before
+					// accepting the next one.
+					next.await();
 				}
 			}
 			catch(Exception exception) {
-				// If the exception was caused by the server socket closing,
-				// ignore it; otherwise, register the uncaught exception.
-				if(!(closed && exception instanceof SocketException))
-					execute(() -> fail(exception));
+				// Ignore exceptions from the server socket being closed.
+				if(closed && exception instanceof SocketException)
+					return;
+				// Report other exceptions on the main thread.
+				else
+					execute(() -> { throw exception; });
 			}
 		}
 	}
 	
 	/**
-	 * A blocking queue which stores operations that will run on the main
-	 * thread.
+	 * A queue that stores operations that will run on the main thread. This
+	 * variable is not assigned until after the server successfully {@link
+	 * #connect() connects}, and then it is assigned null again just before the
+	 * server {@link #onStop() stops}. Whether or not this variable is null can
+	 * be used to detect whether the server has connected and is running.
 	 */
-	final LinkedBlockingQueue<CheckedRunnable> queue = new LinkedBlockingQueue<>();
+	private LinkedBlockingQueue<CheckedRunnable> queue = null;
 	
 	/**
-	 * A list of all currently open sockets. Because this list will only be used
-	 * on the main thread, it does not need to be synchronized.
+	 * A list of all current sockets. Because this list will only be used on the
+	 * main thread, it does not need to be synchronized.
 	 */
 	final List<SerialSocket> sockets = new ArrayList<>();
-	
-	/**
-	 * A latch used to signal that the server has finished shutting down.
-	 */
-	private final CountDownLatch latch = new CountDownLatch(1);
-	
-	/**
-	 * The server socket from which new connections will be accepted.
-	 */
-	private ServerSocket server = null;
 	
 	/**
 	 * A flag indicating that the server has been closed.
@@ -115,339 +148,323 @@ public class SerialServerSocket implements CheckedRunnable, AutoCloseable {
 	private Exception uncaught = null;
 	
 	/**
-	 * Constructs a new serial server socket. The {@link #getServerSocket()
-	 * server socket} is not created or bound until {@link #run()} is called.
+	 * Constructs a new serial server socket. The server does not bind to a port
+	 * until {@link #connect()} is called.
 	 */
 	public SerialServerSocket() {
-		// Ensure onStart() is the first method called.
-		execute(() -> onStart());
+		// Do nothing.
 	}
 	
 	@Override
-	public final void run() throws Exception {
-		// Create and bind the server socket.
-		// Throw an exception immediately if it happens.
-		server = createServer();
-		// Add a shutdown hook. If the JVM stops, close this server and wait for
-		// it to finish.
-		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+	/**
+	 * Connects the server, listens for new sockets, process inputs, and shuts
+	 * down gracefully even if an exception is thrown. This method does not
+	 * return until the server stops, and if an exception was thrown by any of
+	 * the methods it will be thrown at the end of this method.
+	 * <p>
+	 * The thread which calls this method is considered the main thread, and
+	 * most server and socket methods will run on that thread. See {@link
+	 * SerialServerSocket} for details on which methods are called and in what
+	 * order.
+	 */
+	public void run() throws Exception {
+		// Stop the server from being restarted.
+		if(closed)
+			throw new IllegalStateException("The server has stopped and cannot be restarted.");
+		// If this throws an exception, nothing else runs.
+		onStart();
+		// This queue holds operations waiting to run.
+		LinkedBlockingQueue<CheckedRunnable> queue = new LinkedBlockingQueue<>();
+		// This shutdown hook closes the server and waits for it to shut down.
+		CountDownLatch done = new CountDownLatch(1);
+		Thread hook = new Thread(() -> {
 			close();
 			try {
-				latch.await();
+				done.await();
 			}
 			catch(InterruptedException exception) {
-				// do nothing
+				// Do nothing.
 			}
-		}));
-		// Start a thread to listen for new connections.
+		});
+		// This thread accepts new sockets.
 		Accepter accepter = new Accepter();
-		accepter.start();
-		// Run until closed or an exception is thrown.
-		// If the thread is interrupted while taking from the queue, it will be
-		// handled like any other exception.
-		do {		
-			CheckedRunnable runnable = call(() -> queue.take());
-			run(runnable);
-		} while(!closed && uncaught == null);
-		// Ensure the close flag is set.
-		close();
-		// Ensure the server socket is closed.
-		execute(() -> server.close());
-		// Wait for the new connection accepter thread to finish.
-		execute(() -> accepter.join());
-		// Ensure onClose() is called.
-		execute(() -> onClose());
-		drain();
-		// Close all open sockets.
+		// Start the server.
+		safely(() -> {
+			connect();
+			this.queue = queue;
+			Runtime.getRuntime().addShutdownHook(hook);
+			accepter.start();
+			onConnect();
+		});
+		// Run until closed or crash.
+		try {
+			while(!closed && uncaught == null)
+				safely(queue.take());
+		}
+		catch(InterruptedException exception) {
+			if(uncaught == null)
+				uncaught = exception;
+		}
+		closed = true;
+		// Disconnect the server (if it connected).
+		if(this.queue != null) {
+			safely(() -> onClose());
+			safely(() -> disconnect());
+			accepter.join();
+			for(SerialSocket socket : sockets)
+				socket.close();
+			safely(() -> onDisconnect());
+		}
+		// Run until done.
+		drain(queue);
 		for(SerialSocket socket : sockets)
-			execute(() -> socket.close());
-		drain();
-		// Wait for all socket listener threads to finish.
-		for(SerialSocket socket : sockets)
-			execute(() -> socket.listener.join());
-		drain();
-		// Ensure onStop() is called.
-		execute(() -> onStop());
-		drain();
-		// Notify anyone waiting that the server has finished shutting down.
-		latch.countDown();
-		// If an uncaught exception occurred at any time, throw it now.
+			socket.listener.join();
+		synchronized(this) {
+			this.queue = null;
+		}
+		drain(queue);
+		// This is the last method to run.
+		safely(() -> onStop());
+		// Notify the shutdown hook the server has shut down.
+		done.countDown();
+		// Throw the first uncaught exception, if any.
 		if(uncaught != null)
 			throw uncaught;
 	}
 	
 	/**
-	 * Execute all operations that are waiting to run on the main thread.
+	 * Calls a {@link Callable} and returns what it returns. If it throws an
+	 * exception, the exception is reported to {@link #onException(Exception)},
+	 * the server is closed, the exception is recorded so it can be thrown at
+	 * the end of {@link #run()}, and this method returns null. This method
+	 * should only be called from the main thread.
+	 * 
+	 * @param <T> the type of thing returned by the Callable
+	 * @param callable the Callable to run
+	 * @return the value returned by the Callable, or null if the Callable threw
+	 * an exception
 	 */
-	private final void drain() {
+	private <T> T safe(Callable<T> callable) {
+		try {
+			return callable.call();
+		}
+		catch(Exception exception) {
+			if(uncaught == null)
+				uncaught = exception;
+			try {
+				onException(exception);
+			}
+			catch(Exception other) {
+				// Do nothing.
+			}
+			close();
+			return null;
+		}
+	}
+	
+	/**
+	 * Runs a {@link CheckedRunnable}. If it throws an exception, the exception
+	 * is reported to {@link #onException(Exception)}, the server is closed, and
+	 * the exception is recorded so it can be thrown at the end of {@link
+	 * #run()}. This method should only be called from the main thread.
+	 * 
+	 * @param runnable the CheckedRunnable to run
+	 */
+	private void safely(CheckedRunnable runnable) {
+		safe(runnable);
+	}
+	
+	/**
+	 * {@link #safely(CheckedRunnable) Safely} runs all operations waiting in
+	 * the queue. This method should only be called from the main thread.
+	 * 
+	 * @param queue
+	 */
+	private void drain(LinkedBlockingQueue<CheckedRunnable> queue) {
 		CheckedRunnable runnable = queue.poll();
 		while(runnable != null) {
-			run(runnable);
+			safely(runnable);
 			runnable = queue.poll();
 		}
 	}
 	
 	/**
-	 * {@inheritDoc}
-	 * <p>
-	 * Begins the process of stopping the server. After this method is called,
-	 * {@link #onClose()} will run on the main thread, all open sockets will be
-	 * {@link SerialSocket#close() closed}, and the server will eventually
-	 * {@link #onStop() stop}.
-	 * <p>
-	 * It is safe to call this method from any thread; it does not need to be
-	 * called from the main thread.
-	 */
-	@Override
-	public void close() {
-		execute(() -> closed = true);
-	}
-	
-	/**
-	 * Bind and return a {@link ServerSocket}. This method is called once at the
-	 * start of {@link #run()}.
-	 * <p>
-	 * By default, this method is equivalent to:
-	 * <p>
-	 * <code>return new ServerSocket(0);</code>
-	 * <p>
-	 * Overriding this method allows the server to be configured. For example,
-	 * it can be bound to a specific port, or a subclass of {@link ServerSocket}
-	 * can be returned, such as {@link javax.net.ssl.SSLServerSocket}.
-	 * 
-	 * @return a bound server socket on which this server will listen for new
-	 * connections
-	 * @throws Exception if an exception occurs while creating or binding the
-	 * server socket
-	 */
-	protected ServerSocket createServer() throws Exception {
-		return new ServerSocket(0);
-	}
-	
-	/**
-	 * Accept a new {@link Socket socket} from a {@link ServerSocket server
-	 * socket}, blocking until one becomes available.
-	 * <p>
-	 * By default, this method is equivalent to:
-	 * <p>
-	 * <code>return server.accept();</code>
-	 * <p>
-	 * Overriding this method allows the server to customize how it accepts
-	 * sockets or to perform additional checks on a socket before it is used.
-	 * For example, if this server is using {@link javax.net.ssl.SSLServerSocket
-	 * secure sockets}, this method can check that the handshake was successful
-	 * before returning the socket.
-	 * 
-	 * @param server the server socket returned by {@link #createServer()} which
-	 * should be used to accept a new socket
-	 * @return the accepted socket
-	 * @throws Exception if an exception occurs while accepting a socket
-	 */
-	protected Socket accept(ServerSocket server) throws Exception {
-		return server.accept();
-	}
-	
-	/**
-	 * Create an instance of {@link SerialSocket} from a {@link Socket} accepted
-	 * by this server.
-	 * <p>
-	 * By default, this method is equivalent to:
-	 * <p>
-	 * <code>return new SerialSocket(this, socket);</code>
-	 * <p>
-	 * Overriding this method allows the socket to be configured. For example,
-	 * a subclass of {@link SerialSocket} can be returned, or an {@link
-	 * javax.net.ssl.SSLSocket} can perform its handshake.
-	 * 
-	 * @param socket the socket to used when creating a {@link SerialSocket}
-	 * @return an instance of {@link SerialSocket}
-	 * @throws Exception if an exception occurs when creating the {@link
-	 * SerialSocket}
-	 */
-	protected SerialSocket createSocket(Socket socket) throws Exception {
-		return new SerialSocket(this, socket);
-	}
-	
-	/**
-	 * Creates an instance of {@link BufferedReader} to read from a {@link
-	 * Socket}.
-	 * <p>
-	 * By default, this method is equivalent to:
-	 * <p>
-	 * <code>return new BufferedReader(new InputStreamReader(socket.getInputStream()));</code>
-	 * <p>
-	 * Overriding this method allows the reader to be configured. For example,
-	 * the reader could be configured to limit the maximum amount of input to
-	 * read to avoid an out of memory attack.
-	 * 
-	 * @param socket the socket whose input should be read from
-	 * @return a {@link BufferedReader} on the socket's input
-	 * @throws Exception if an exception occurs while creating the reader
-	 */
-	protected BufferedReader createReader(Socket socket) throws Exception {
-		return new BufferedReader(new InputStreamReader(socket.getInputStream()));
-	}
-	
-	/**
-	 * Creates an instance of {@link BufferedWriter} to write to a {@link
-	 * Socket}.
-	 * <p>
-	 * By default, this method is equivalent to:
-	 * <p>
-	 * <code>return new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));</code>
-	 * <p>
-	 * Overriding this method allows the writer to be configured. For example,
-	 * the writer could be given a larger or smaller buffer size.
-	 * 
-	 * @param socket the socket whose output should be written to
-	 * @return a {@link BufferedWriter} for the socket's output
-	 * @throws Exception if an exception occurs while creating the writer
-	 */
-	protected BufferedWriter createWriter(Socket socket) throws Exception {
-		return new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-	}
-	
-	/**
-	 * Returns the {@link ServerSocket} this server is using, or throws an
-	 * exception if it has not yet been bound.
-	 * 
-	 * @return the server socket
-	 * @throws IllegalStateException if {@link #createSocket(Socket)} has not
-	 * yet been called to create and bind the server socket
-	 */
-	protected ServerSocket getServerSocket() {
-		if(server == null)
-			throw new IllegalStateException("The server has not been created.");
-		else
-			return server;
-	}
-	
-	/**
-	 * Runs an an operation on the main thread which called {@link #run()}.
-	 * This method can be used when an operation needs to run on the same thread
-	 * as the server's events but not in response to one of those events.
-	 * 
-	 * @param runnable an operation to fun on the main thread
-	 */
-	protected void execute(CheckedRunnable runnable) {
-		queue.add(runnable);
-	}
-	
-	/**
-	 * This method runs exactly once on the main thread after the {@link
-	 * #createSocket(Socket) server socket has been created and bound} and
-	 * before all other events.
+	 * Always runs first when the server starts. It runs on the same thread
+	 * that called {@link #run()}. Unless this method throws an exception,
+	 * {@link #onStop()} is guaranteed to run before the server stops.
 	 * <p>
 	 * By default, this method does nothing. It is meant to be overridden.
 	 * 
-	 * @throws Exception if an exception is thrown by the method
+	 * @throws Exception if a problem occurs
 	 */
 	protected void onStart() throws Exception {
 		// This method is meant to be overridden.
 	}
 	
 	/**
-	 * This method runs on the main thread when an uncaught exception is thrown
-	 * on the main thread. This method runs immediately after the exception is
-	 * thrown. It provides an opportunity to log the exception. After an
-	 * uncaught exception is thrown, the server is {@link #close() closed} and
-	 * begins to shut down. After the server {@link #onStop() stops}, the first
-	 * uncaught exception will be thrown from {@link #run()}, but if any other
-	 * uncaught exceptions occur while the server is shutting down, they will
-	 * each be passed to this method.
+	 * Binds the server socket to its network port. It runs after {@link
+	 * #onStart()} on the same thread that called {@link #run()}. If this method
+	 * does not throw an exception, {@link #onConnect()}, {@link #onClose()},
+	 * {@link #disconnect()}, and {@link #onDisconnect()} are guaranteed to run
+	 * before the server stops.
+	 * 
+	 * @throws Exception if a problem occurs when the server connects to the
+	 * network
+	 */
+	protected abstract void connect() throws Exception;
+	
+	/**
+	 * Runs after {@link #connect()} (if it did not throw an exception) on the
+	 * same thread that called {@link #run()}.
+	 * <p>
+	 * By default, this method does nothing. It is meant to be overridden.
+	 * 
+	 * @throws Exception if a problem occurs
+	 */
+	protected void onConnect() throws Exception {
+		// This method is meant to be overridden.
+	}
+	
+	/**
+	 * Blocks until a new socket connects to the server and then returns it.
+	 * This method <em>does not</em> run on the same thread that called {@link
+	 * #run()}. Once this method returns a socket, it does not run again until
+	 * after {@link #create(Socket)} and {@link #onAccept(SerialSocket)} have
+	 * finished processing the socket. If this method throws an exception, the
+	 * server closes.
+	 * 
+	 * @return a newly accepted socket
+	 * @throws Exception if a problem occurs while waiting for or accepting the
+	 * new socket connection
+	 */
+	protected abstract Socket accept() throws Exception;
+	
+	/**
+	 * Creates a {@link SerialSocket} from a {@link Socket}. This method is
+	 * called after {@link #accept()} but on the same thread that called {@link
+	 * #run()}. If this method throws an exception, the socket will be closed;
+	 * otherwise, {@link #onAccept(SerialSocket)} will be called after.
+	 * 
+	 * @param socket the socket to make into a serial socket
+	 * @return a serial socket
+	 * @throws Exception if a problem occurs while creating the serial socket
+	 */
+	protected abstract SerialSocket create(Socket socket) throws Exception;
+	
+	/**
+	 * Runs each time a new {@link SerialSocket} connects to the server on the
+	 * same thread that called {@link #run()}.
+	 * <p>
+	 * By default, this method does nothing. It is meant to be overridden.
+	 * 
+	 * @param socket the newly created serial socket
+	 * @throws Exception if a problem occurs
+	 */
+	protected void onAccept(SerialSocket socket) throws Exception {
+		// This method is meant to be overridden.
+	}
+	
+	/**
+	 * If an exception is thrown at any time by one of the server's methods,
+	 * it is reported to this method from the same thread that called {@link 
+	 * #run()} (regardless of which thread the exception was thrown on).
 	 * <p>
 	 * By default, this method does nothing. It is meant to be overridden.
 	 * <p>
-	 * It is strongly recommended that this method not throw an exception. If it
-	 * does, that exception will be caught and {@link Exception#printStackTrace()
-	 * printed to standard error}, but it will not be reported to this method to
-	 * avoid creating an infinite loop.
+	 * While this method declares an exception for convenience, if it throws an
+	 * exception that exception is ignored; otherwise, the server could get
+	 * trapped in an infinite loop of this method throwing exceptions and then
+	 * reporting them back to this method.
 	 * 
-	 * @param exception the uncaught exception
-	 * @throws Exception if an exception is thrown by the method
+	 * @param exception the exception that was thrown by one of the server
+	 * methods
+	 * @throws Exception if a problem occurs while processing the exception
 	 */
 	protected void onException(Exception exception) throws Exception {
 		// This method is meant to be overridden.
 	}
 	
+	@Override
 	/**
-	 * This method runs exactly once on the main thread when the server is
-	 * closed, which can happen when the {@link #close()} method is called, when
-	 * the main thread is interrupted, when the server socket is disconnected,
-	 * or when an uncaught exception is thrown on the main thread. After this
-	 * event, the server will {@link SerialSocket#close() close} all open
-	 * sockets and eventually {@link #onStop() stop}.
+	 * Begins the server's shutdown process. This method can be called from any
+	 * thread.
+	 */
+	public final void close() {
+		closed = true;
+		LinkedBlockingQueue<CheckedRunnable> queue = this.queue;
+		if(queue != null)
+			queue.offer(() -> {});
+	}
+	
+	/**
+	 * Runs after the server is closed, either because a method threw an
+	 * exception, because a network problem disconnected the server, because the
+	 * JVM shut down, or because {@link #close()} was called. This method only
+	 * runs if the server successfully {@link #connect() connected} and it runs
+	 * on the same thread that called {@link #run()}.
 	 * <p>
 	 * By default, this method does nothing. It is meant to be overridden.
 	 * 
-	 * @throws Exception if an exception is thrown by the method
+	 * @throws Exception if a problem occurs
 	 */
 	protected void onClose() throws Exception  {
 		// This method is meant to be overridden.
 	}
 	
 	/**
-	 * This method is called exactly once after all other events. All open
-	 * sockets will have been {@link SerialSocket#close() closed} and {@link
-	 * SerialSocket#onDisconnect() disconnected} before this method is called.
-	 * This method provides an opportunity for cleanup.
+	 * Disconnects the server from the network such that it can no longer accept
+	 * any new connections. This method should cause {@link #accept()} to stop
+	 * blocking if it is waiting. This method runs after {@link #onClose()} on
+	 * the same thread that called {@link #run()}, but only if the server
+	 * successfully {@link #connect() connected}. It is possible the server is
+	 * already disconnected from the network by the time this method runs if a
+	 * network error is what caused the server to close.
+	 * 
+	 * @throws Exception if a problem occurs while disconnecting the server from
+	 * the network
+	 */
+	protected abstract void disconnect() throws Exception;
+	
+	/**
+	 * Runs after {@link #disconnect()} on the same thread that called {@link
+	 * #run()}. This method only runs if the server successfully {@link
+	 * #connect() connected}, and it runs regardless of whether {@link
+	 * #disconnect()} threw an exception. No new sockets will connect to the
+	 * server after this method runs, but some sockets may still be connected
+	 * when it runs.
 	 * <p>
 	 * By default, this method does nothing. It is meant to be overridden.
 	 * 
-	 * @throws Exception if an exception is thrown by the method
+	 * @throws Exception if a problem occurs
+	 */
+	protected void onDisconnect() throws Exception  {
+		// This method is meant to be overridden.
+	}
+	
+	/**
+	 * Always runs last just before the server stops. It runs on the same thread
+	 * that called {@link #run()} but only if the server {@link #onStart()
+	 * started}.
+	 * <p>
+	 * By default, this method does nothing. It is meant to be overridden.
+	 * 
+	 * @throws Exception if a problem occurs
 	 */
 	protected void onStop() throws Exception {
 		// This method is meant to be overridden.
 	}
 	
 	/**
-	 * Runs a {@link Callable} and returns the result of {@link
-	 * Callable#call()}. If an exception is thrown, it is passed to {@link
-	 * #fail(Exception)}.
+	 * Submits an operation to run on the main thread.
 	 * 
-	 * @param <T> the return type of the callable
-	 * @param callable the callable to call
-	 * @return the result of the call
+	 * @param runnable the operation to run on the main thread
+	 * @throws IllegalStateException if the server has not yet {@link
+	 * #connect() connected} or has already {@link #onStop() stopped}
 	 */
-	private final <T> T call(Callable<T> callable) {
-		try {
-			return callable.call();
-		}
-		catch(Exception exception) {
-			fail(exception);
-			return null;
-		}
-	}
-	
-	/**
-	 * Runs a {@link CheckedRunnable}. If an exception is thrown, it is passed
-	 * to {@link #fail(Exception)}.
-	 * 
-	 * @param runnable the runnable to run
-	 */
-	private final void run(CheckedRunnable runnable) {
-		call(runnable);
-	}
-	
-	/**
-	 * This method should be called with each uncaught exception that is thrown
-	 * on the main thread. The first time it is called, it stores the exception
-	 * to be thrown at the end of {@link #run()}. Each time it is called, it
-	 * passes the exception to {@link #onException(Exception)}.
-	 * 
-	 * @param exception the uncaught exception
-	 */
-	final void fail(Exception exception) {
-		if(uncaught == null)
-			uncaught = exception;
-		try {
-			onException(exception);
-		}
-		catch(Exception other) {
-			// If onException throws an exception, we don't want to call it
-			// again and risk creating an infinite loop, so just print the
-			// exception to standard error.
-			other.printStackTrace();
-		}
+	protected synchronized void execute(CheckedRunnable runnable) {
+		if(queue == null)
+			throw new IllegalStateException("The server is not currently accepting instructions.");
+		else if(!queue.offer(runnable) && uncaught == null)
+			uncaught = new IllegalStateException("The server's instruction queue is full.");
 	}
 }

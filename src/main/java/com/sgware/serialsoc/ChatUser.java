@@ -1,13 +1,14 @@
 package com.sgware.serialsoc;
 
+import java.io.IOException;
 import java.net.Socket;
 
-class ChatUser extends SerialSocket {
+class ChatUser extends SimpleSerialSocket {
 	
 	private final ChatServer server;
 	private String name = null;
 	
-	protected ChatUser(ChatServer server, Socket socket) throws Exception {
+	protected ChatUser(ChatServer server, Socket socket) throws IOException {
 		super(server, socket);
 		this.server = server;
 	}
@@ -34,10 +35,8 @@ class ChatUser extends SerialSocket {
 	
 	@Override
 	protected void onException(Exception exception) throws Exception {
-		System.out.println("An exception has caused user " + name + " to crash.");
-		exception.printStackTrace();
-		// This exception causes the server to crash.
-		super.onException(exception);
+		System.out.println("User " + name + " has crashed: " + exception.getMessage());
+		throw exception;
 	}
 	
 	@Override

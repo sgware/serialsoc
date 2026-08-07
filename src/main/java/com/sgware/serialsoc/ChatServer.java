@@ -1,12 +1,11 @@
 package com.sgware.serialsoc;
 
-import java.io.IOException;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
+import java.io.IOException;
+import java.net.Socket;
 
-class ChatServer extends SerialServerSocket {
+class ChatServer extends SimpleSerialServerSocket {
 	
 	public static final void main(String[] args) throws Exception {
 		int port;
@@ -19,20 +18,14 @@ class ChatServer extends SerialServerSocket {
 		}
 	}
 	
-	public final int port;
 	final List<ChatUser> users = new ArrayList<>();
 	
-	public ChatServer(int port) {
-		this.port = port;
+	public ChatServer(int port) throws IOException {
+		super(port);
 	}
-	
+		
 	@Override
-	protected ServerSocket createServer() throws IOException {
-		return new ServerSocket(port);
-	}
-	
-	@Override
-	protected ChatUser createSocket(Socket socket) throws Exception {
+	protected ChatUser create(Socket socket) throws IOException {
 		return new ChatUser(this, socket);
 	}
 	
@@ -42,14 +35,23 @@ class ChatServer extends SerialServerSocket {
 	}
 	
 	@Override
+	protected void onConnect() {
+		System.out.println("The chat server is now accepting new connections.");
+	}
+	
+	@Override
 	protected void onException(Exception exception) {
-		System.out.println("The chat server has crashed.");
-		exception.printStackTrace();
+		System.out.println("The chat server has crashed: " + exception.getMessage());
 	}
 	
 	@Override
 	protected void onClose() {
 		System.out.println("The chat server has been closed.");
+	}
+	
+	@Override
+	protected void onDisconnect() {
+		System.out.println("The chat server is no longer accepting new connections.");
 	}
 	
 	@Override

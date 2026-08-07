@@ -3,20 +3,19 @@ package com.sgware.serialsoc;
 import java.util.concurrent.Callable;
 
 /**
- * A functional interface similar with {@link Runnable}, except that it declares
+ * A functional interface similar to {@link Runnable}, except that it declares
  * a checked exception, and similar to {@link Callable} except that it returns
  * void.
  * 
  * @author Stephen G. Ware
- * @version 1
  */
 @FunctionalInterface
 public interface CheckedRunnable extends Callable<Void> {
 	
 	/**
-	 * Perform the operation, possibly throwing an exception in the process.
+	 * Perform the operation, possibly throwing an exception.
 	 * 
-	 * @throws Exception if the operation threw an exception
+	 * @throws Exception if a problem occurred
 	 */
 	public void run() throws Exception;
 	

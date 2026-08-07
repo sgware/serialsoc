@@ -4,48 +4,60 @@ A Serial Server Socket simplifies a common design pattern in socket-based
 networking applications where a server waits for and accepts new sockets, and
 then each new socket waits for and reports each line of input it receives.
 A serial server socket ensures everything happens on one main thread and ensures
-a clean shut down even if an uncaught exception is thrown.
+a clean start up and shut down even if an uncaught exception is thrown.
 
 Note that "serialization" here means "make everything happen in order on one
 thread." It is not referring to object serialization, which means to encode or
 decode an object.
 
-When you call `SerialServerSocket.run()`, all of the following events will
-happen on the thread that called `run` in this order:
-- A factory method will be called to create and bind a `java.net.ServerSocket`.
-If that method throws an exception, it is thrown immediately and no other events
-will happen.
-- The server's `onStart` method is called exactly once and before any other
-events.
-- Each time the server socket accepts a new connection, the server will call a
-factory method that creates a new `SerialSocket` instance.
-- When a new socket connects, its `onConnect` method is called exactly once and
-before any other events for that socket.
-- Each time a socket reads a line of input, its `receive` method is called with
-that input as a string.
-- When a socket is closed, either because something on the server side called
-its `close` method or because the client closed the connection, its `onClose`
-method is called exactly once.
-- After a socket has disconnected, its `onDisconnect` method is called exactly
-once, and it will always be the last event for that socket.
-- When the server is closed, either because its `close` method was called,
-because the thread was interrupted, because the server socket was disconnected,
-or because an uncaught exception was thrown, the server's `onClose` method is
-called exactly once. When a server closes, all of its currently connected
-sockets will be closed, and their `onClose` and `onDisconnect` methods will be
-called before the server stops.
-- After all other events, the server's `onStop` method will be called exactly
-once.
-- If at any time an uncaught exception is thrown, the server's `onException`
-method will be called immediately, then the server will close and stop, and
-then, after all events have finished, the uncaught exception will be thrown from
-the server's main `run` method. If more than one uncaught exception is thrown,
-`onException` will be called for all of them, but only the first uncaught
-exception will be thrown from `run`.
+When you call `SerialServerSocket.run()`:
+- `onStart()` is called first on the same thread that called `run()`. If it
+  throws an exception, no other methods will run.
+- `connect()` is called on the same thread that called `run()` to establish a
+  server socket. If it does not throw an exception, `onConnect()` is called on
+  the same thread that called `run()`.
+- If `connect()` did not throw an exception, the server starts a new thread that
+  continuously calls `accept()` to wait for new connections.
+- Each time a new socket is accepted, the server calls `create(Socket)` on the
+  same thread that called `run()` to wrap a `SerialSocket` around the new socket.
+  If `create(Socket)` throws an exception, the socket is closed and never
+  reported to the server. If `#create(Socket)` does not throw an exception, the
+  new socket is reported to the server's `onAccept(SerialSocket)` method, which
+  runs on the same thread that called `run()`.
+- Each time a new `SerialSocket` is successfully created, its `onConnect()`
+  method is called first on the same thread that called `run()`.
+- If the socket's `onConnect()` method did not throw an exception, a new thread
+  continuously calls its `read()` method to listen for new input. Each input
+  that is successfully received is reported to its `receive(String)` method,
+  which runs on the same thread that called `run()`.
+- A socket can be closed by the client, by a network problem, because one of its
+  methods threw an exception, or by calling its `close()` method from any
+  thread. Regardless of how it is closed, its `onClose()`, then `disconnect()`,
+  then `onDisconnect()` methods are always called in that order from the same
+  thread that called `run()`. These methods always run even if an earlier method
+  threw an exception.
+- If any `SerialSocket` methods throw an exception, the exception is reported to
+  its `onException(Exception)` method on the same thread that called `run()`,
+  and then the socket will close gracefully. `onException(Exception)` can either
+  ignore the exception or re-throw it to cause the server to shut down.
+- If any `SerialServerSocket` methods throw an exception (or if
+  `SerialSocket.onException(Exception)` re-throws an exception), the exception
+  is reported to `SerialServerSocket.onException(Exception)` on the same thread
+  that called `run()`, and then the server will shut down gracefully.
+- A server shuts down when one of its methods throws an exception, when a
+  network problem causes the server to disconnect, when the JVM shuts down, or
+  when `close()` is called from any thread. Regardless of how it is closed, if
+  `connect()` did not throw an exception, its `onClose()`, then `disconnect()`,
+  then `onDisconnect()` methods are always called in that order from the same
+  thread that called `run()`.
+- As long as `onStart()` did not throw an exception, `onStop()` is always called
+  last from the same thread that called `run()`.
+- If an exception was thrown by any of the server's methods, it is thrown by
+  `run()` after all of the shut down methods have completed.
 
 Because all of these events happen on the same thread, the server may be able to
-avoid synchronizing its data structures. Because events like `onClose` and
-`onStop` will always happen, even when an uncaught exception is thrown, the
+avoid synchronizing its data structures. Because methods like `onClose()` and
+`onStop()` will always be called, even when an uncaught exception is thrown, the
 server can be sure to perform any cleanup required before shutting down
 gracefully.
 
@@ -53,17 +65,26 @@ gracefully.
 
 Download the [pre-built JAR file here](build/jar).
 
+You can add this library a dependency to a Maven project like this:
+```
+<dependency>
+    <groupId>com.sgware</groupId>
+    <artifactId>serialsoc</artifactId>
+    <version>2.0.0</version>
+</dependency>
+```
+
 ## Documentation
 
 The [JavaDoc API is here](http://sgware.github.io/serialsoc).
 
 ## Compile and Test
 
-Serial Socket Server is pure Java with no dependencies. To compile it on the
-command line with just the JDK:
+Serial Socket Server is pure Java with no dependencies. To compile it from the
+terminal with just the JDK:
 
 ```
-git clone https://github.com/sgware/serialsoc
+git clone https://github.com/sgware/serialsoc.git
 cd serialsoc
 javac -sourcepath src -d bin src/main/java/com/sgware/serialsoc/*.java
 ```
@@ -78,10 +99,11 @@ java -cp bin com.sgware.serialsoc.StressTest
 ```
 
 If you have Maven installed, you can compile the source, generate the
-documentation, and package the JAR file like this:
+documentation, package the JAR file, and add its to your local repository like
+this:
 
 ```
-git clone https://github.com/sgware/serialsoc
+git clone https://github.com/sgware/serialsoc.git
 cd serialsoc
 mvn clean install
 ```
@@ -91,13 +113,13 @@ mvn clean install
 Here's an example of implementing a basic chat room using Serial Server Sockets:
 
 ```
-import java.io.IOException;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
+import java.io.IOException;
+import java.net.Socket;
+import com.sgware.serialsoc.*;
 
-public class ChatServer extends SerialServerSocket {
+public class ChatServer extends SimpleSerialServerSocket {
 	
 	public static final void main(String[] args) throws Exception {
 		int port;
@@ -110,20 +132,14 @@ public class ChatServer extends SerialServerSocket {
 		}
 	}
 	
-	public final int port;
 	final List<ChatUser> users = new ArrayList<>();
 	
-	public ChatServer(int port) {
-		this.port = port;
+	public ChatServer(int port) throws IOException {
+		super(port);
 	}
-	
+		
 	@Override
-	protected ServerSocket createServer() throws IOException {
-		return new ServerSocket(port);
-	}
-	
-	@Override
-	protected ChatUser createSocket(Socket socket) throws Exception {
+	protected ChatUser create(Socket socket) throws IOException {
 		return new ChatUser(this, socket);
 	}
 	
@@ -133,14 +149,23 @@ public class ChatServer extends SerialServerSocket {
 	}
 	
 	@Override
+	protected void onConnect() {
+		System.out.println("The chat server is now accepting new connections.");
+	}
+	
+	@Override
 	protected void onException(Exception exception) {
-		System.out.println("The chat server has crashed.");
-		exception.printStackTrace();
+		System.out.println("The chat server has crashed: " + exception.getMessage());
 	}
 	
 	@Override
 	protected void onClose() {
 		System.out.println("The chat server has been closed.");
+	}
+	
+	@Override
+	protected void onDisconnect() {
+		System.out.println("The chat server is no longer accepting new connections.");
 	}
 	
 	@Override
@@ -157,14 +182,16 @@ public class ChatServer extends SerialServerSocket {
 ```
 
 ```
+import java.io.IOException;
 import java.net.Socket;
+import com.sgware.serialsoc.*;
 
-public class ChatUser extends SerialSocket {
+class ChatUser extends SimpleSerialSocket {
 	
 	private final ChatServer server;
 	private String name = null;
 	
-	protected ChatUser(ChatServer server, Socket socket) throws Exception {
+	protected ChatUser(ChatServer server, Socket socket) throws IOException {
 		super(server, socket);
 		this.server = server;
 	}
@@ -191,10 +218,8 @@ public class ChatUser extends SerialSocket {
 	
 	@Override
 	protected void onException(Exception exception) throws Exception {
-		System.out.println("An exception has caused user " + name + " to crash.");
-		exception.printStackTrace();
-		// This exception causes the server to crash.
-		super.onException(exception);
+		System.out.println("User " + name + " has crashed: " + exception.getMessage());
+		throw exception;
 	}
 	
 	@Override
@@ -216,7 +241,7 @@ press enter, and then type a message to send to the chat room. If you type
 will cause the server to crash.
 
 Even when the server crashes because of an uncaught exception, it still closes
-all open connections and gracefully shuts down via `onClose` and `onStop`
+all open connections and gracefully shuts down via `onClose()` and `onStop()`
 before finally throwing the exception.
 
 ## Ownership and License
@@ -226,10 +251,20 @@ Though he was faculty at the University of Kentucky at the time, this software
 was created during a sabbatical, and no university resources were used during
 development.
 
-This software is released under the open source MIT License.
+This software is released under the open source [MIT License](license.txt).
 
 ## Version History
 
+- Version 2.0.0: Major revisions. `SerialServerSocket` and `SerialSocket` are
+  now abstract classes, with `SimpleSerialServerSocket` and `SimpleSerialSocket`
+  replacing the old concrete classes. `SecureSerialServerSocket` is now
+  included, which creates `SSLSockets`. Some methods have been renamed and more
+  event methods have been added. When the server accepts a socket, it waits for
+  all its setup methods to run before accepting the next socket. When a socket
+  reads input, it waits for it to be fully processed before reading the next
+  message. Fixed several bugs, including ones where exceptions throw by the
+  socket were not always reported to the socket's `onException(Exception)`
+  method.
 - Version 1.3.0: Added a shutdown hook when the server starts so that if the JVM
   is shut down (e.g. via SIGTERM) the server will close and stop gracefully.
 - Version 1.2.0: Added an `onException` method to `SerialSocket` that can be
