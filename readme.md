@@ -73,7 +73,7 @@ You can add this library a dependency to a Maven project like this:
 <dependency>
     <groupId>com.sgware</groupId>
     <artifactId>serialsoc</artifactId>
-    <version>2.0.0</version>
+    <version>2.1.0</version>
 </dependency>
 ```
 
