@@ -1,6 +1,7 @@
 package com.sgware.serialsoc;
 
 import java.io.Closeable;
+import java.io.IOException;
 import java.net.SocketException;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
@@ -201,7 +202,9 @@ public abstract class SerialSocket implements Closeable {
 	
 	/**
 	 * Sends a message over the socket. This method can be called from any
-	 * thread. If sending the message causes an exception, the exception will be
+	 * thread. If the socket is closed while writing, the message may not be
+	 * sent but the socket will close normally. If writing to the socket causes
+	 * something other than an {@link IOException}, that exception will be
 	 * reported to {@link #onException(Exception)} from the same thread that
 	 * called {@link SerialServerSocket#run()} (regardless of what thread called
 	 * this method), and the socket will close.
@@ -212,8 +215,8 @@ public abstract class SerialSocket implements Closeable {
 		try {
 			write(message);
 		}
-		catch(SocketException exception) {
-			// Ignore exceptions caused by a closed socket.
+		catch(IOException exception) {
+			close();
 		}
 		catch(Exception exception) {
 			server.execute(() -> safely(() -> { throw exception; }));
@@ -228,6 +231,7 @@ public abstract class SerialSocket implements Closeable {
 	 * should not be called from other contexts.
 	 * 
 	 * @param string the message to write to the socket's output stream
+	 * @throws IOException if it is no longer possible to write to the socket
 	 * @throws Exception if a problem occurs while writing to the socket
 	 */
 	protected abstract void write(String string) throws Exception;

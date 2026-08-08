@@ -264,6 +264,9 @@ This software is released under the open source [MIT License](license.txt).
 
 ## Version History
 
+- Version 2.1.1: Fixed an undesirable behavior in `SerialSocket#send(String)`
+  that sometimes caused an `IOException` to be thrown when writing to a socket
+  that has been closed.
 - Version 2.1.0: Added methods to check and await the status of a server. Added
   the `Clock` class that calls `tick()` at regular intervals.
 - Version 2.0.0: Major revisions. `SerialServerSocket` and `SerialSocket` are
