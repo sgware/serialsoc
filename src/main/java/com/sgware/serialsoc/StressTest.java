@@ -2,6 +2,7 @@ package com.sgware.serialsoc;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.StringWriter;
@@ -12,7 +13,8 @@ import java.util.Random;
 class StressTest {
 	
 	public static final int PORT = 1234;
-	public static final int CLIENTS = 100000;
+	public static final int SERVERS = 100;
+	public static final int CLIENTS = 100;
 	public static final int MIN_MESSAGES = 0;
 	public static final int MAX_MESSAGES = 20;
 	public static final int MIN_MESSAGE_LENGTH = 5;
@@ -21,15 +23,80 @@ class StressTest {
 	public static final int MAX_DELAY = 100;
 	public static final Random RANDOM = new Random(0);
 	public static final String POOL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	private static Exception uncaught = null;
 	
-	private static class TestClient extends Thread {
+	private static abstract class SafeThread extends Thread {
+		
+		@Override
+		public final void run() {
+			try {
+				call();
+			}
+			catch(Exception exception) {
+				if(uncaught == null)
+					uncaught = exception;
+			}
+		}
+		
+		public abstract void call() throws Exception;
+	}
+	
+	private static class TestServerThread extends SafeThread {
+		
+		private static int nextID = 0;
+		public final int id = nextID++;
+		public final TestSerialServerSocket server;
+		private final TestClient[] clients;
+		private final long[] delays;
+		
+		public TestServerThread() throws IOException {
+			server = new TestSerialServerSocket(PORT);
+			clients = new TestClient[CLIENTS];
+			for(int i = 0; i <  clients.length; i++)
+				clients[i] = new TestClient();
+			delays = new long[clients.length + 1];
+			for(int i = 0; i <  delays.length; i++)
+				delays[i] = random(MIN_DELAY, MAX_DELAY);
+		}
+		
+		@Override
+		public String toString() {
+			return "Server " + id;
+		}
+		
+		@Override
+		public void call() throws Exception {
+			System.out.println(this + " has started.");
+			new SafeThread() {
+				public void call() throws Exception {
+					server.await(Status.CONNECTED);
+					System.out.println("Starting " + clients.length + " clients for " + TestServerThread.this + ".");
+					Thread.sleep(delays[0]);
+					int index = 0;
+					while(index < clients.length && uncaught == null) {
+						clients[index].start();
+						Thread.sleep(delays[index + 1]);
+						index++;
+					}
+					System.out.println("Closing " + TestServerThread.this + ".");
+					server.close();
+					System.out.println("Started " + index + " of " + clients.length + " clients for " + TestServerThread.this + ".");
+					for(TestClient client : clients)
+						client.join();
+				}
+			}.start();
+			new Clock(server, 10).start();
+			server.run();
+			System.out.println(this + " has stopped.");
+		}
+	}
+	
+	private static class TestClient extends SafeThread {
 		
 		private static int nextID = 0;
 		public final int id = nextID++;
 		private final String[] messages;
 		private final long[] delays;
-		private boolean connected = false;
-		private boolean disconnected = false;
 		
 		public TestClient() {
 			messages = new String[random(MIN_MESSAGES, MAX_MESSAGES)];
@@ -40,7 +107,7 @@ class StressTest {
 					string.append(POOL.charAt(RANDOM.nextInt(POOL.length())));
 				messages[i] = string.toString();
 			}
-			delays = new long[messages.length + 1];
+			delays = new long[Math.max(0, messages.length - 1)];
 			for(int i = 0; i < delays.length; i++)
 				delays[i] = random(MIN_DELAY, MAX_DELAY);
 		}
@@ -50,15 +117,8 @@ class StressTest {
 			return "Client " + id;
 		}
 		
-		public boolean launch() {
-			start();
-			while(!connected && !disconnected)
-				pause(10);
-			return connected;
-		}
-		
 		@Override
-		public void run() {
+		public void call() throws Exception {
 			System.out.println(this + " started.");
 			TestClientListener listener = null;
 			int index = 0;
@@ -67,35 +127,23 @@ class StressTest {
 				BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 				BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
 			) {
-				connected = true;
-				pause(delays[0]);
 				listener = new TestClientListener(this, in);
 				listener.start();
 				while(index < messages.length) {
 					out.append(messages[index]);
 					out.append("\n");
 					out.flush();
-					System.out.println(this + " sent: " + messages[index]);
-					pause(delays[index]);
+					System.out.println(this + " sent message " + index + ": " + messages[index]);
+					if(index < delays.length)
+						Thread.sleep(delays[index]);
 					index++;
 				}
 			}
 			catch(SocketException exception) {
-				System.out.println(this + " crashed with " + (messages.length - index) + " of " + messages.length + " message unsent.");
+				System.out.println(this + " was disconnected with " + index + " of " + messages.length + " message sent.");
 			}
-			catch(Exception exception) {
-				throw new RuntimeException(this + " crashed.", exception);
-			}
-			finally {
-				disconnected = true;
-			}
-			try {
-				if(listener != null)
-					listener.join();
-			}
-			catch(InterruptedException exception) {
-				throw new RuntimeException(this + " crashed.", exception);
-			}
+			if(listener != null)
+				listener.join();
 			System.out.println(this + " stopped.");
 		}
 	}
@@ -127,7 +175,7 @@ class StressTest {
 				}
 			}
 			catch(Exception exception) {
-				System.out.println(this + " crashed.");
+				System.out.println(this + " stopped.");
 			}
 		}
 	}
@@ -136,56 +184,19 @@ class StressTest {
 		return min + RANDOM.nextInt(max - min + 1);
 	}
 	
-	private static final void pause(long ms) {
-		try {
-			Thread.sleep(ms);
-		}
-		catch(InterruptedException exception) {
-			throw new RuntimeException("Pause interrupted.", exception);
-		}
-	}
-	
 	public static void main(String[] args) throws Exception {
-		TestSerialServerSocket server = new TestSerialServerSocket(PORT);
-		TestClient[] clients = new TestClient[CLIENTS];
-		for(int i = 0; i <  clients.length; i++)
-			clients[i] = new TestClient();
-		long[] delays = new long[clients.length];
-		for(int i = 0; i <  clients.length; i++)
-			delays[i] = random(MIN_DELAY, MAX_DELAY);
-		Thread clientThread = new Thread(() -> {
-			pause(500);
-			System.out.println("Begin starting clients.");
-			int index = 0;
-			for(index = 0; index < clients.length; index++) {
-				if(clients[index].launch())
-					pause(delays[index]);
-				else
-					break;
-			}
-			System.out.println("Started " + index + " of " + clients.length + " clients.");
-			pause(500);
-			server.close();
-			try {
-				for(TestClient client : clients)
-					client.join();
-			}
-			catch(InterruptedException exception) {
-				throw new RuntimeException("Client thread interrupted.", exception);
-			}
-		});
-		clientThread.start();
-		Exception uncaught = null;
-		try {
-			server.run();
+		TestServerThread[] servers = new TestServerThread[SERVERS];
+		for(int i = 0; i < servers.length; i++)
+			servers[i] = new TestServerThread();
+		int index = 0;
+		while(index < servers.length && uncaught == null) {
+			servers[index].start();
+			servers[index].join();
+			if(uncaught == null)
+				servers[index].server.verify();
+			else
+				throw uncaught;
+			index++;
 		}
-		catch(Exception exception) {
-			uncaught = exception;
-		}
-		clientThread.join();
-		if(uncaught == null)
-			server.verify();
-		else
-			uncaught.printStackTrace();
 	}
 }

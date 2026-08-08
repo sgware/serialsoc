@@ -5,8 +5,9 @@ import java.net.Socket;
 
 class TestSerialSocket extends SimpleSerialSocket {
 	
+	private static int nextID = 0;
+	public final int id = nextID++;
 	private final TestSerialServerSocket server;
-	public final int id;
 	private boolean connected = false;
 	private boolean closed = false;
 	private boolean disconnected = false;
@@ -14,7 +15,6 @@ class TestSerialSocket extends SimpleSerialSocket {
 	protected TestSerialSocket(TestSerialServerSocket server, Socket socket) throws IOException {
 		super(server, socket);
 		this.server = server;
-		id = server.sockets.size();
 		server.sockets.add(this);
 	}
 	
@@ -53,6 +53,13 @@ class TestSerialSocket extends SimpleSerialSocket {
 			throw new IllegalStateException(this + " sent a message after disconnecting.");
 		super.send(message);
 		System.out.println(this + " sent: " + message);
+	}
+	
+	@Override
+	protected void tick() {
+		server.checkMainThread(this, "ticked");
+		if(closed)
+			throw new IllegalStateException(this + " ticked after it closed.");
 	}
 	
 	@Override

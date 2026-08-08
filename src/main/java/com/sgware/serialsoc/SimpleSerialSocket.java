@@ -7,6 +7,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
+import java.net.InetAddress;
 import java.net.Socket;
 
 /**
@@ -73,6 +74,39 @@ public class SimpleSerialSocket extends SerialSocket {
 	 */
 	protected SimpleSerialSocket(SerialServerSocket server, Socket socket) throws IOException {
 		this(server, socket, new InputStreamReader(socket.getInputStream()), new OutputStreamWriter(socket.getOutputStream()));
+	}
+	
+	/**
+	 * Returns the remote address to which the socket is connected.
+	 * 
+	 * @return the remote IP address to which this socket is connected, or null
+	 * if the socket is not connected
+	 * @see Socket#getInetAddress()
+	 */
+	public InetAddress getRemoteAddress() {
+		return socket.getInetAddress();
+	}
+	
+	/**
+	 * Gets the local address to which the socket is bound.
+	 * 
+	 * @return the local address to which the socket is bound, or the wildcard
+	 * address if the socket is closed or not bound yet
+	 * @see Socket#getLocalAddress()
+	 */
+	public InetAddress getLocalAddress() {
+		return socket.getLocalAddress();
+	}
+	
+	/**
+	 * Returns the local port number to which this socket is bound.
+	 * 
+	 * @return the local port number to which this socket is bound or -1 if the
+	 * socket is not bound yet
+	 * @see Socket#getLocalPort()
+	 */
+	public int getLocalPort() {
+		return socket.getLocalPort();
 	}
 	
 	@Override

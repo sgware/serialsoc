@@ -9,6 +9,8 @@ import java.util.List;
 
 class TestSerialServerSocket extends SimpleSerialServerSocket {
 	
+	private static int nextID = 0;
+	public final int id = nextID++;
 	final List<TestSerialSocket> sockets = new ArrayList<>();
 	private Thread thread = null;
 	private Exception uncaught = null;
@@ -24,7 +26,7 @@ class TestSerialServerSocket extends SimpleSerialServerSocket {
 	
 	@Override
 	public String toString() {
-		return "Server";
+		return "Server " + id;
 	}
 	
 	@Override
@@ -33,12 +35,16 @@ class TestSerialServerSocket extends SimpleSerialServerSocket {
 		if(started)
 			throw new IllegalStateException(this + " started twice.");
 		started = true;
+		if(getStatus() != Status.RUN)
+			throw new IllegalStateException(this + " should have status " + Status.RUN + " but it has status " + getStatus() + ".");
 		System.out.println(this + " started.");
 	}
 	
 	@Override
 	protected void connect() throws IOException {
 		checkMainThread(this, "connected");
+		if(getStatus() != Status.STARTED)
+			throw new IllegalStateException(this + " should have status " + Status.STARTED + " but it has status " + getStatus() + ".");
 		super.connect();
 	}
 	
@@ -50,12 +56,16 @@ class TestSerialServerSocket extends SimpleSerialServerSocket {
 		if(connected)
 			throw new IllegalStateException(this + " connected twice.");
 		connected = true;
+		if(getStatus() != Status.CONNECTED)
+			throw new IllegalStateException(this + " should have status " + Status.CONNECTED + " but it has status " + getStatus() + ".");
 		System.out.println(this + " connected.");
 	}
 	
 	@Override
 	protected TestSerialSocket create(Socket socket) throws IOException {
 		checkMainThread(this, "created a socket");
+		if(getStatus() != Status.CONNECTED)
+			throw new IllegalStateException(this + " should have status " + Status.CONNECTED + " but it has status " + getStatus() + ".");
 		return new TestSerialSocket(this, socket);
 	}
 	
@@ -66,6 +76,17 @@ class TestSerialServerSocket extends SimpleSerialServerSocket {
 			throw new IllegalStateException(this + " accepted before it connected.");
 		if(disconnected)
 			throw new IllegalStateException(this + " accepted after it connected.");
+		if(getStatus() != Status.CONNECTED)
+			throw new IllegalStateException(this + " should have status " + Status.CONNECTED + " but it has status " + getStatus() + ".");
+	}
+	
+	@Override
+	protected void tick() {
+		checkMainThread(this, "ticked");
+		if(!has(Status.CONNECTED))
+			throw new IllegalStateException(this + " ticked before it connected.");
+		if(has(Status.CLOSED))
+			throw new IllegalStateException(this + " ticked after it closed.");
 	}
 	
 	@Override
@@ -97,12 +118,16 @@ class TestSerialServerSocket extends SimpleSerialServerSocket {
 		if(closed)
 			throw new IllegalStateException(this + " closed twice.");
 		closed = true;
+		if(getStatus() != Status.CLOSED)
+			throw new IllegalStateException(this + " should have status " + Status.CLOSED + " but it has status " + getStatus() + ".");
 		System.out.println(this + " closed.");
 	}
 	
 	@Override
 	protected void disconnect() throws IOException {
 		checkMainThread(this, "disconnected");
+		if(getStatus() != Status.CLOSED)
+			throw new IllegalStateException(this + " should have status " + Status.CLOSED + " but it has status " + getStatus() + ".");
 		super.disconnect();
 	}
 	
@@ -114,6 +139,8 @@ class TestSerialServerSocket extends SimpleSerialServerSocket {
 		if(disconnected)
 			throw new IllegalStateException(this + " disconnected twice.");
 		disconnected = true;
+		if(getStatus() != Status.DISCONNECTED)
+			throw new IllegalStateException(this + " should have status " + Status.DISCONNECTED + " but it has status " + getStatus() + ".");
 		System.out.println(this + " disconnected.");
 	}
 	
@@ -127,6 +154,8 @@ class TestSerialServerSocket extends SimpleSerialServerSocket {
 		if(stopped)
 			throw new IllegalStateException(this + " stopped twice.");
 		stopped = true;
+		if(getStatus() != Status.FINISHED)
+			throw new IllegalStateException(this + " should have status " + Status.FINISHED + " but it has status " + getStatus() + ".");
 		System.out.println(this + " stopped.");
 	}
 	
@@ -138,6 +167,8 @@ class TestSerialServerSocket extends SimpleSerialServerSocket {
 	}
 	
 	public void verify() {
+		if(getStatus() != Status.STOPPED)
+			throw new IllegalStateException(this + " should have status " + Status.STOPPED + " but it has status " + getStatus() + ".");
 		if(uncaught != null)
 			throw new IllegalStateException(this + " threw an uncaught exception.", uncaught);
 		if(!started)

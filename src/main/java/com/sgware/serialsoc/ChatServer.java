@@ -14,6 +14,7 @@ class ChatServer extends SimpleSerialServerSocket {
 		else
 			port = 1234;
 		try(ChatServer server = new ChatServer(port)) {
+			new Clock(server).start();
 			server.run();
 		}
 	}
@@ -37,6 +38,11 @@ class ChatServer extends SimpleSerialServerSocket {
 	@Override
 	protected void onConnect() {
 		System.out.println("The chat server is now accepting new connections.");
+	}
+	
+	@Override
+	protected void tick() {
+		System.out.println("Tick! The server's status is " + getStatus() + ", and " + users.size() + " users are connected.");
 	}
 	
 	@Override

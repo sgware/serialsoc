@@ -1,6 +1,7 @@
 package com.sgware.serialsoc;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -60,6 +61,29 @@ public class SimpleSerialServerSocket extends SerialServerSocket {
 	 */
 	public SimpleSerialServerSocket() throws IOException {
 		this(0);
+	}
+	
+	/**
+	 * Returns the local address of this server socket.
+	 * 
+	 * @return the address to which this socket is bound, or null if the server
+	 * has not yet {@link #connect() connected}
+	 * @see ServerSocket#getInetAddress()
+	 */
+	public InetAddress getAddress() {
+		return server.getInetAddress();
+	}
+	
+	/**
+	 * Returns the port number on which this socket is listening or will listen
+	 * once it {@link #connect() connects}.
+	 * 
+	 * @return the port number on which this socket is listening or -1 if the
+	 * socket is not bound yet
+	 * @see ServerSocket#getLocalPort()
+	 */
+	public int getPort() {
+		return port;
 	}
 	
 	@Override

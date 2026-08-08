@@ -30,6 +30,9 @@ When you call `SerialServerSocket.run()`:
   continuously calls its `read()` method to listen for new input. Each input
   that is successfully received is reported to its `receive(String)` method,
   which runs on the same thread that called `run()`.
+- If the server needs to run an operation regularly, you can start a `Clock`
+  that will regularly call `tick()` on the server and each socket at a regular
+  interval from the same thread that called `run()`.
 - A socket can be closed by the client, by a network problem, because one of its
   methods threw an exception, or by calling its `close()` method from any
   thread. Regardless of how it is closed, its `onClose()`, then `disconnect()`,
@@ -128,6 +131,7 @@ public class ChatServer extends SimpleSerialServerSocket {
 		else
 			port = 1234;
 		try(ChatServer server = new ChatServer(port)) {
+			new Clock(server).start();
 			server.run();
 		}
 	}
@@ -151,6 +155,11 @@ public class ChatServer extends SimpleSerialServerSocket {
 	@Override
 	protected void onConnect() {
 		System.out.println("The chat server is now accepting new connections.");
+	}
+	
+	@Override
+	protected void tick() {
+		System.out.println("Tick! The server's status is " + getStatus() + ", and " + users.size() + " users are connected.");
 	}
 	
 	@Override
@@ -255,6 +264,8 @@ This software is released under the open source [MIT License](license.txt).
 
 ## Version History
 
+- Version 2.1.0: Added methods to check and await the status of a server. Added
+  the `Clock` class that calls `tick()` at regular intervals.
 - Version 2.0.0: Major revisions. `SerialServerSocket` and `SerialSocket` are
   now abstract classes, with `SimpleSerialServerSocket` and `SimpleSerialSocket`
   replacing the old concrete classes. `SecureSerialServerSocket` is now

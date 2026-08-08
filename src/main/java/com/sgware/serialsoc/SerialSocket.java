@@ -23,8 +23,11 @@ import java.util.concurrent.CountDownLatch;
  * <li>If any {@link SerialSocket} methods throw an exception, the exception is
  * reported to {@link #onException(Exception)} on the same thread that called
  * {@link SerialServerSocket#run()}, and the socket will close gracefully.</li>
+ * <li>If this socket's server has a {@link Clock}, {@link #tick()} will be
+ * called regularly from the same thread that called {@link
+ * SerialServerSocket#run()}.</li>
  * <li>A socket can be closed by the client, by a network problem, because one
- * of its method threw an exception, or by calling {@link #close()} from any
+ * of its methods threw an exception, or by calling {@link #close()} from any
  * thread. Regardless of how the socket closed, {@link #onClose()} and then
  * {@link #disconnect()} are always called in that order on the same thread that
  * called {@link SerialServerSocket#run()}.</li>
@@ -121,6 +124,15 @@ public abstract class SerialSocket implements Closeable {
 	}
 	
 	/**
+	 * Returns true if this socket has been closed.
+	 * 
+	 * @return true if the socket's close operation has run
+	 */
+	final boolean hasBeenClosed() {
+		return closed;
+	}
+	
+	/**
 	 * Runs a {@link CheckedRunnable}. If it throws an exception, the exception
 	 * is reported to {@link #onException(Exception)} and the socket is closed.
 	 * This method should only be called from the main thread.
@@ -130,7 +142,7 @@ public abstract class SerialSocket implements Closeable {
 	 * {@link #onException(Exception)} throws a second exception when the first
 	 * is reported to it 
 	 */
-	private final void safely(CheckedRunnable runnable) throws Exception {
+	final void safely(CheckedRunnable runnable) throws Exception {
 		try {
 			runnable.run();
 		}
@@ -219,6 +231,19 @@ public abstract class SerialSocket implements Closeable {
 	 * @throws Exception if a problem occurs while writing to the socket
 	 */
 	protected abstract void write(String string) throws Exception;
+		
+	/**
+	 * If a {@link Clock} is started for this socket's server, this method is
+	 * called regularly on each interval by the same thread that called {@link
+	 * SerialServerSocket#run()}.
+	 * <p>
+	 * By default, this method does nothing. It is meant to be overridden.
+	 * 
+	 * @throws Exception if a problem occurs
+	 */
+	protected void tick() throws Exception {
+		// This method is meant to be overridden.
+	}
 	
 	/**
 	 * If an exception is thrown at any time by one of the socket's methods,
