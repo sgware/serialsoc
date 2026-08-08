@@ -33,6 +33,8 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <!-- Compile with Java 17 -->
     <maven.compiler.release>17</maven.compiler.release>
+    <!-- Documentation -->
+    <project.documentation.url>https://sgware.github.io/serialsoc</project.documentation.url>
   </properties>
   <!-- Build -->
   <build>
